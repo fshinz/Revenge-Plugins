@@ -1,1 +1,1 @@
-{"name":"NoMentionCount","description":"Hide mention counts for specific channels and servers.","authors":[{"name":"fshin","id":"1381008677301129257"}],"main":"index.js","vendetta":{"icon":"ic_notif_off"},"hash":"5094c52f9a28336a90de999e4d52cd783890dcb21dfded1b9e56f8d6880db208"}
+{"name":"NoMentionCount","description":"Hide mention counts for specific channels and servers.","authors":[{"name":"fshin","id":"1381008677301129257"}],"main":"index.js","vendetta":{"icon":"ic_notif_off"},"hash":"c69b3d278a55b03fe3b027ac93e0eac3e55fb7fa03b650d5cef0c039a78c2000"}
