@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>fshinz Revenge Plugins</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Animated Background */
+        .background-animation {
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            z-index: -1;
+            opacity: 0.5;
+        }
+
+        .blob {
+            position: absolute;
+            background: radial-gradient(circle at 30% 50%, rgba(100, 200, 255, 0.3), transparent 50%);
+            border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
+            animation: blob-animation 8s infinite;
+        }
+
+        .blob:nth-child(1) {
+            width: 300px;
+            height: 300px;
+            top: -100px;
+            left: -50px;
+            animation-delay: 0s;
+        }
+
+        .blob:nth-child(2) {
+            width: 200px;
+            height: 200px;
+            bottom: -50px;
+            right: -50px;
+            animation-delay: 4s;
+            background: radial-gradient(circle at 30% 50%, rgba(255, 100, 200, 0.3), transparent 50%);
+        }
+
+        @keyframes blob-animation {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            33% { transform: translate(30px, -50px) rotate(120deg); }
+            66% { transform: translate(-20px, 20px) rotate(240deg); }
+        }
+
+        /* Header */
+        header {
+            text-align: center;
+            padding: 60px 20px 40px;
+            position: relative;
+            z-index: 1;
+        }
+
+        header h1 {
+            font-size: 3.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #64c8ff 0%, #ff64c8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: 800;
+            animation: fadeInDown 0.8s ease-out;
+        }
+
+        header p {
+            font-size: 1.2rem;
+            color: #b0b0b0;
+            animation: fadeInUp 0.8s ease-out;
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Container */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Instructions Section */
+        .instructions {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(100, 200, 255, 0.2);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 60px;
+            backdrop-filter: blur(10px);
+            animation: slideInLeft 0.8s ease-out;
+        }
+
+        .instructions h2 {
+            color: #64c8ff;
+            margin-bottom: 15px;
+            font-size: 1.5rem;
+        }
+
+        .instructions ol {
+            margin-left: 20px;
+            color: #c0c0c0;
+        }
+
+        .instructions li {
+            margin-bottom: 10px;
+        }
+
+        .instructions code {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: #64c8ff;
+            font-family: 'Courier New', monospace;
+        }
+
+        @keyframes slideInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        /* Plugins Section */
+        .plugins-section {
+            margin-bottom: 80px;
+        }
+
+        .section-title {
+            font-size: 2rem;
+            margin-bottom: 40px;
+            text-align: center;
+            color: #64c8ff;
+            position: relative;
+            padding-bottom: 15px;
+        }
+
+        .section-title::after {
+            content: '';
+            position: absolute;
+            width: 60px;
+            height: 3px;
+            background: linear-gradient(90deg, #64c8ff, #ff64c8);
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        /* Plugins Grid */
+        .plugins-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 30px;
+            animation: staggerIn 1s ease-out;
+        }
+
+        @keyframes staggerIn {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Plugin Card */
+        .plugin-card {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(100, 200, 255, 0.3);
+            border-radius: 12px;
+            padding: 25px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(10px);
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .plugin-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            transition: left 0.5s;
+        }
+
+        .plugin-card:hover::before {
+            left: 100%;
+        }
+
+        .plugin-card:hover {
+            transform: translateY(-10px);
+            border-color: rgba(100, 200, 255, 0.6);
+            box-shadow: 0 20px 40px rgba(100, 200, 255, 0.2);
+        }
+
+        .plugin-name {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #64c8ff;
+            margin-bottom: 8px;
+        }
+
+        .plugin-description {
+            color: #a0a0a0;
+            font-size: 0.95rem;
+            margin-bottom: 15px;
+            min-height: 40px;
+        }
+
+        .plugin-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 15px;
+            border-top: 1px solid rgba(100, 200, 255, 0.2);
+        }
+
+        .install-btn {
+            background: linear-gradient(135deg, #64c8ff, #4da8d8);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+            font-size: 0.9rem;
+        }
+
+        .install-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(100, 200, 255, 0.4);
+        }
+
+        .install-btn.copied {
+            background: linear-gradient(135deg, #64ff64, #48d048);
+        }
+
+        .plugin-url {
+            color: #808080;
+            font-size: 0.8rem;
+            font-family: 'Courier New', monospace;
+            word-break: break-all;
+            max-width: 150px;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 40px 20px;
+            color: #606060;
+            border-top: 1px solid rgba(100, 200, 255, 0.1);
+            margin-top: 60px;
+            position: relative;
+            z-index: 1;
+        }
+
+        footer a {
+            color: #64c8ff;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+
+        footer a:hover {
+            color: #ff64c8;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            header h1 {
+                font-size: 2.5rem;
+            }
+
+            .plugins-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .instructions {
+                padding: 20px;
+            }
+
+            .section-title {
+                font-size: 1.5rem;
+            }
+        }
+
+        /* No Plugins Message */
+        .no-plugins {
+            text-align: center;
+            padding: 60px 20px;
+            color: #808080;
+            font-size: 1.1rem;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #64c8ff;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(100, 200, 255, 0.3);
+            border-top: 4px solid #64c8ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Toast Notification */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(100, 255, 100, 0.9);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            animation: slideInRight 0.3s ease-out;
+            z-index: 1000;
+        }
+
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(100px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="background-animation">
+        <div class="blob"></div>
+        <div class="blob"></div>
+    </div>
+
+    <header>
+        <h1>🎨 fshinz Revenge Plugins</h1>
+        <p>A collection of high-quality plugins for Revenge</p>
+    </header>
+
+    <div class="container">
+        <div class="instructions">
+            <h2>📥 How to Install</h2>
+            <ol>
+                <li>Open <strong>Revenge</strong> on your device</li>
+                <li>Go to the <strong>Plugins</strong> section</li>
+                <li>Click <strong>Add Plugin</strong></li>
+                <li>Copy the plugin URL from below and paste it</li>
+                <li>Click <strong>Install</strong> and enjoy! 🚀</li>
+            </ol>
+        </div>
+
+        <div class="plugins-section">
+            <h2 class="section-title">Available Plugins</h2>
+            <div id="plugins-container" class="plugins-grid">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading plugins...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>Made with ❤️ by fshinz | <a href="https://github.com/fshinz/Revenge-Plugins" target="_blank">View on GitHub</a></p>
+    </footer>
+
+    <script>
+        const BASE_URL = 'https://raw.githubusercontent.com/fshinz/Revenge-Plugins/master/dist';
+        const PLUGINS_URL = 'https://api.github.com/repos/fshinz/Revenge-Plugins/contents/dist';
+
+        async function loadPlugins() {
+            try {
+                const response = await fetch(PLUGINS_URL);
+                const data = await response.json();
+
+                const plugins = [];
+
+                for (const item of data) {
+                    if (item.type === 'dir') {
+                        try {
+                            const manifestResponse = await fetch(`${BASE_URL}/${item.name}/manifest.json`);
+                            if (manifestResponse.ok) {
+                                const manifest = await manifestResponse.json();
+                                plugins.push({
+                                    id: item.name,
+                                    name: manifest.name || item.name,
+                                    description: manifest.description || 'No description available',
+                                    version: manifest.version || '1.0.0',
+                                    url: `https://fshinz.github.io/Revenge-Plugins/${item.name}`
+                                });
+                            }
+                        } catch (e) {
+                            console.warn(`Failed to load manifest for ${item.name}`);
+                        }
+                    }
+                }
+
+                displayPlugins(plugins);
+            } catch (error) {
+                console.error('Error loading plugins:', error);
+                document.getElementById('plugins-container').innerHTML = `
+                    <div class="no-plugins">
+                        <p>Unable to load plugins. Please try again later.</p>
+                    </div>
+                `;
+            }
+        }
+
+        function displayPlugins(plugins) {
+            const container = document.getElementById('plugins-container');
+
+            if (plugins.length === 0) {
+                container.innerHTML = `
+                    <div class="no-plugins">
+                        <p>No plugins available yet. Check back soon! 🔜</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = plugins.map(plugin => `
+                <div class="plugin-card">
+                    <div class="plugin-name">${escapeHtml(plugin.name)}</div>
+                    <div class="plugin-description">${escapeHtml(plugin.description)}</div>
+                    <div class="plugin-info">
+                        <span class="plugin-url">${plugin.url}</span>
+                        <button class="install-btn" onclick="copyToClipboard('${plugin.url}', this)">
+                            📋 Copy
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function copyToClipboard(text, button) {
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = button.textContent;
+                button.textContent = '✓ Copied!';
+                button.classList.add('copied');
+
+                showToast('Plugin URL copied! 🎉');
+
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.classList.remove('copied');
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                showToast('Failed to copy URL');
+            });
+        }
+
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        // Load plugins when page loads
+        loadPlugins();
+    </script>
+</body>
+</html>
