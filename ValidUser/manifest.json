@@ -1,0 +1,1 @@
+{"name":"ValidUser","description":"Fixes unresolved user mentions like @unknown-user to a normal clickable mention.","authors":[{"name":"fshin","id":"1381008677301129257"}],"main":"index.js","vendetta":{"icon":"ic_mention_24px"},"hash":"51856ef93625caadfbfc257713b42cc7cc3f447130ee132751608c29e6e359b1"}
