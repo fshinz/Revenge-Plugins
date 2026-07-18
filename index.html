@@ -424,8 +424,8 @@
     </footer>
 
     <script>
-        const BASE_URL = 'https://raw.githubusercontent.com/fshinz/Revenge-Plugins/master/dist';
-        const PLUGINS_URL = 'https://api.github.com/repos/fshinz/Revenge-Plugins/contents/dist';
+        const BASE_URL = 'https://fshinz.github.io/Revenge-Plugins';
+        const PLUGINS_URL = 'https://api.github.com/repos/fshinz/Revenge-Plugins/contents?ref=gh-pages';
 
         async function loadPlugins() {
             try {
@@ -435,7 +435,8 @@
                 const plugins = [];
 
                 for (const item of data) {
-                    if (item.type === 'dir') {
+                    // Pull folders from the root of gh-pages, skipping workflow or system junk files
+                    if (item.type === 'dir' && item.name !== '.github') {
                         try {
                             const manifestResponse = await fetch(`${BASE_URL}/${item.name}/manifest.json`);
                             if (manifestResponse.ok) {
@@ -445,7 +446,7 @@
                                     name: manifest.name || item.name,
                                     description: manifest.description || 'No description available',
                                     version: manifest.version || '1.0.0',
-                                    url: `https://fshinz.github.io/Revenge-Plugins/${item.name}`
+                                    url: `${BASE_URL}/${item.name}`
                                 });
                             }
                         } catch (e) {
