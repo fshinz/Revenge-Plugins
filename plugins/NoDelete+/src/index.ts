@@ -49,7 +49,7 @@ export default {
         AuthStore?.getId?.() ||
         MessageStore?.getCurrentUser?.()?.id;
 
-      // ── 1. CATCH NONCE REPLACEMENTS, DELETIONS & FULL SNAPSHOTS ──
+      // 1. CATCH NONCE REPLACEMENTS, DELETIONS abd FULL SNAPSHOTS
       patches.push(
         patchBefore("dispatch", FluxDispatcher, (args) => {
           const event = args[0];
@@ -87,7 +87,7 @@ export default {
         })
       );
 
-      // ── 2. SINGLE MESSAGE DELETE HANDLER (LEGACY EMBEDS + V2 COMPONENTS) ──
+      // 2. SINGLE MESSAGE DELETE HANDLER (LEGACY EMBEDS and V2 COMPONENTS)
       patches.push(
         patchBefore("dispatch", FluxDispatcher, (args) => {
           const event = args[0];
@@ -110,7 +110,7 @@ export default {
           const time = snapshot?.deletedAt || moment().format("HH:mm:ss");
           const automodMessage = buildAutomodMessage(DELETED_TEXT, time);
 
-          // Force full re-hydration of both components AND legacy embeds
+          // Force full rehydration of both components AND legacy embeds
           args[0] = {
             type: "MESSAGE_EDIT_FAILED_AUTOMOD",
             messageData: {
@@ -134,7 +134,7 @@ export default {
         })
       );
 
-      // ── 3. BULK DELETE HANDLER ──
+      // 3.BULK DELETE HANDLER
       patches.push(
         patchBefore("dispatch", FluxDispatcher, (args) => {
           const event = args[0];
@@ -189,7 +189,7 @@ export default {
         })
       );
 
-      // ── 4. EDITS & EMBED/COMPONENT PRESERVATION ──
+      //4. EDITS & EMBED/COMPONENT PRESERVATION
       patches.push(
         patchBefore("dispatch", FluxDispatcher, (args) => {
           const event = args[0];
