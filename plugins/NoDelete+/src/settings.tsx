@@ -9,7 +9,6 @@ import { Forms } from "@vendetta/ui/components";
 
 const { FormText, FormRow, FormSwitchRow, FormSection } = Forms;
 
-// Safe Metro resolvers with native Vendetta fallbacks
 const TableRowGroupModule = findByProps("TableRowGroup") || findByProps("TableGroup");
 const TableRowGroupComponent = TableRowGroupModule?.TableRowGroup || TableRowGroupModule?.TableGroup || FormSection;
 
