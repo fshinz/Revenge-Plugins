@@ -89,6 +89,8 @@ for (let plug of await readdir("./plugins")) {
             manifest.hash = createHash("sha256").update(toHash).digest("hex");
             manifest.main = "index.js";
             await writeFile(`./dist/${plug}/manifest.json`, JSON.stringify(manifest));
+
+            await writeFile(`./dist/${plug}/index.html`, "<!DOCTYPE html><html><head><meta charset=\"utf-8\" /><title>Revenge Plugin</title></head><body></body></html>\n");
         
             console.log(`✅ Successfully built ${manifest.name}!`);
         } catch (e) {
