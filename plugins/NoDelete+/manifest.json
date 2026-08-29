@@ -1,0 +1,14 @@
+{
+  "name": "NoDelete+",
+  "description": "a modified version of \"NoDelete\"",
+  "authors": [
+    {
+      "name": "fshin",
+      "id": "123"
+    }
+  ],
+  "main": "src/index.ts",
+  "vendetta": {
+    "icon": "ic_hide_24px"
+  }
+}
