@@ -1,4 +1,4 @@
-import React from "react";
+import { React } from "@vendetta/metro/common";
 import { findByProps, findByStoreName } from "@vendetta/metro";
 import { storage } from "@vendetta/plugin";
 import { useProxy } from "@vendetta/storage";
@@ -9,6 +9,7 @@ import { Forms } from "@vendetta/ui/components";
 
 const { FormText, FormRow, FormSwitchRow, FormSection } = Forms;
 
+// Safe Metro resolvers with native Vendetta fallbacks
 const TableRowGroupModule = findByProps("TableRowGroup") || findByProps("TableGroup");
 const TableRowGroupComponent = TableRowGroupModule?.TableRowGroup || TableRowGroupModule?.TableGroup || FormSection;
 
@@ -34,6 +35,8 @@ export default function Settings() {
   useProxy(storage);
 
   storage.ignore ??= { users: [], bots: false, ownMessages: false };
+  
+  // Destructure useState safely from metro common React
   const [users, setUsers] = React.useState<string[]>(storage.ignore.users || []);
 
   const handleRemoveUser = (userId: string) => {
