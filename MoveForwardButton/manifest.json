@@ -1,1 +1,15 @@
-{"name":"Move Forward Button","description":"Repositions Discord's native Forward button to sit directly under Copy User ID in the message long press context menu.","authors":[{"name":"fshin","id":"1381008677301129257"}],"main":"index.js","vendetta":{"icon":"ArrowAngleRightUpIcon"},"hash":"6edd8e7522a7183e16dd279e538f79971181f48ff68969d49003d25f61c25ebc"}
+{
+  "name": "Move Forward Button",
+  "description": "Repositions Discord's native Forward button to sit directly under Copy User ID in the message long press context menu.",
+  "authors": [
+    {
+      "name": "fshin",
+      "id": "1381008677301129257"
+    }
+  ],
+  "main": "index.js",
+  "vendetta": {
+    "icon": "ArrowAngleRightUpIcon"
+  },
+  "hash": "6edd8e7522a7183e16dd279e538f79971181f48ff68969d49003d25f61c25ebc"
+}

@@ -1,1 +1,15 @@
-{"name":"Platform Spoofer","description":"Spoof your online platform status to appear on Desktop, Web, Meta Quest, or Console.","authors":[{"name":"fshin","id":"1381008677301129257"}],"main":"index.js","vendetta":{"icon":"UserPlatformIcon"},"hash":"6f0a5cf6b407f3232f1badfbfa9b6017e8f7160b6bbcdaa077395a975ee5c470"}
+{
+  "name": "Platform Spoofer",
+  "description": "Spoof your online platform status to appear on Desktop, Web, Meta Quest, or Console.",
+  "authors": [
+    {
+      "name": "fshin",
+      "id": "1381008677301129257"
+    }
+  ],
+  "main": "index.js",
+  "vendetta": {
+    "icon": "UserPlatformIcon"
+  },
+  "hash": "6f0a5cf6b407f3232f1badfbfa9b6017e8f7160b6bbcdaa077395a975ee5c470"
+}

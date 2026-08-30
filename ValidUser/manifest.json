@@ -1,1 +1,15 @@
-{"name":"ValidUser","description":"Fixes unresolved user mentions like @unknown-user to a normal clickable mention.","authors":[{"name":"fshin, o.oer","id":"1381008677301129257"}],"main":"index.js","vendetta":{"icon":"ic_mention_24px"},"hash":"1891d3e30bbfbd3be037f5830428e2cd614d2828629d9eb6a44b8394f07305c5"}
+{
+  "name": "ValidUser",
+  "description": "Fixes unresolved user mentions like @unknown-user to a normal clickable mention.",
+  "authors": [
+    {
+      "name": "fshin, o.oer",
+      "id": "1381008677301129257"
+    }
+  ],
+  "main": "index.js",
+  "vendetta": {
+    "icon": "ic_mention_24px"
+  },
+  "hash": "1891d3e30bbfbd3be037f5830428e2cd614d2828629d9eb6a44b8394f07305c5"
+}

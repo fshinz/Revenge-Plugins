@@ -1,1 +1,15 @@
-{"name":"Metro Inspector","description":"Inspect, search, and copy Metro module exports and property types ,helpful plugin for plugin devs.","authors":[{"name":"fshin","id":"1381008677301129257"}],"main":"index.js","vendetta":{"icon":"flash"},"hash":"cbff0e1e7ff965c50e2515624161d60d88e43f2e6a7952f5b7a6386b10b23408"}
+{
+  "name": "Metro Inspector",
+  "description": "Inspect, search, and copy Metro module exports and property types ,helpful plugin for plugin devs.",
+  "authors": [
+    {
+      "name": "fshin",
+      "id": "1381008677301129257"
+    }
+  ],
+  "main": "index.js",
+  "vendetta": {
+    "icon": "flash"
+  },
+  "hash": "cbff0e1e7ff965c50e2515624161d60d88e43f2e6a7952f5b7a6386b10b23408"
+}

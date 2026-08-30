@@ -1,1 +1,15 @@
-{"name":"fast Copy User ID","description":"Adds a button to the message long press context menu to copy the message author's user ID faster.","authors":[{"name":"fshin","id":"1381008677301129257"}],"main":"index.js","vendetta":{"icon":"IdIcon"},"hash":"20c27c4ee2ead80c95c4d16638343e2060d3da6100c89a8d6131312f8a9fa95e"}
+{
+  "name": "fast Copy User ID",
+  "description": "Adds a button to the message long press context menu to copy the message author's user ID faster.",
+  "authors": [
+    {
+      "name": "fshin",
+      "id": "1381008677301129257"
+    }
+  ],
+  "main": "index.js",
+  "vendetta": {
+    "icon": "IdIcon"
+  },
+  "hash": "20c27c4ee2ead80c95c4d16638343e2060d3da6100c89a8d6131312f8a9fa95e"
+}
