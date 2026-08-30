@@ -3,537 +3,834 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>fshinz Revenge Plugins</title>
+
+    <meta name="theme-color" content="#0b0c0f">
+    <meta name="description" content="fshinz's Revenge plugins">
+
+    <title>fshinz / Revenge Plugins</title>
+
     <style>
+        :root {
+            --background: #0b0c0f;
+            --surface: #111318;
+            --surface-hover: #151820;
+
+            --border: #242833;
+            --border-hover: #363c49;
+
+            --text: #f1f3f5;
+            --muted: #9299a6;
+            --dim: #666d79;
+
+            --max-width: 1050px;
+        }
+
         * {
-            margin: 0;
-            padding: 0;
             box-sizing: border-box;
         }
 
+        html {
+            background: var(--background);
+        }
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            color: #e0e0e0;
+            margin: 0;
+            min-height: 100vh;
+
+            background:
+                radial-gradient(
+                    circle at 50% -20%,
+                    rgba(255, 255, 255, 0.045),
+                    transparent 35%
+                ),
+                var(--background);
+
+            color: var(--text);
+
+            font-family:
+                Inter,
+                ui-sans-serif,
+                system-ui,
+                -apple-system,
+                BlinkMacSystemFont,
+                "Segoe UI",
+                sans-serif;
+
+            font-size: 15px;
             line-height: 1.6;
-            overflow-x: hidden;
         }
 
-        /* Animated Background */
-        .background-animation {
-            position: fixed;
-            width: 100%;
-            height: 100%;
-            top: 0;
-            left: 0;
-            z-index: -1;
-            opacity: 0.5;
+        a {
+            color: inherit;
+            text-decoration: none;
         }
 
-        .blob {
-            position: absolute;
-            background: radial-gradient(circle at 30% 50%, rgba(100, 200, 255, 0.3), transparent 50%);
-            border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
-            animation: blob-animation 8s infinite;
+        button,
+        input {
+            font: inherit;
         }
 
-        .blob:nth-child(1) {
-            width: 300px;
-            height: 300px;
-            top: -100px;
-            left: -50px;
-            animation-delay: 0s;
-        }
-
-        .blob:nth-child(2) {
-            width: 200px;
-            height: 200px;
-            bottom: -50px;
-            right: -50px;
-            animation-delay: 4s;
-            background: radial-gradient(circle at 30% 50%, rgba(255, 100, 200, 0.3), transparent 50%);
-        }
-
-        @keyframes blob-animation {
-            0%, 100% { transform: translate(0, 0) rotate(0deg); }
-            33% { transform: translate(30px, -50px) rotate(120deg); }
-            66% { transform: translate(-20px, 20px) rotate(240deg); }
+        .container {
+            width: min(calc(100% - 40px), var(--max-width));
+            margin: 0 auto;
         }
 
         /* Header */
+
         header {
-            text-align: center;
-            padding: 60px 20px 40px;
-            position: relative;
-            z-index: 1;
+            height: 72px;
+
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+
+            border-bottom: 1px solid var(--border);
         }
 
-        header h1 {
-            font-size: 3.5rem;
-            margin-bottom: 10px;
-            background: linear-gradient(135deg, #64c8ff 0%, #ff64c8 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            font-weight: 800;
-            animation: fadeInDown 0.8s ease-out;
+        .brand {
+            font-weight: 700;
+            letter-spacing: -0.02em;
         }
 
-        header p {
-            font-size: 1.2rem;
-            color: #b0b0b0;
-            animation: fadeInUp 0.8s ease-out;
+        .brand span {
+            color: var(--muted);
+            font-weight: 500;
         }
 
-        @keyframes fadeInDown {
-            from {
-                opacity: 0;
-                transform: translateY(-30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        .github-link {
+            color: var(--muted);
+            font-size: 14px;
+
+            transition: color 0.15s ease;
         }
 
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        .github-link:hover {
+            color: var(--text);
         }
 
-        /* Container */
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 20px;
-            position: relative;
-            z-index: 1;
+        /* Hero */
+
+        .hero {
+            padding: 82px 0 48px;
         }
 
-        /* Instructions Section */
-        .instructions {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(100, 200, 255, 0.2);
-            border-radius: 15px;
-            padding: 30px;
-            margin-bottom: 60px;
-            backdrop-filter: blur(10px);
-            animation: slideInLeft 0.8s ease-out;
+        .eyebrow {
+            color: var(--muted);
+            font-size: 13px;
+            margin-bottom: 12px;
         }
 
-        .instructions h2 {
-            color: #64c8ff;
-            margin-bottom: 15px;
-            font-size: 1.5rem;
+        h1 {
+            margin: 0 0 16px;
+
+            font-size: clamp(36px, 6vw, 58px);
+            line-height: 1.02;
+
+            letter-spacing: -0.045em;
         }
 
-        .instructions ol {
-            margin-left: 20px;
-            color: #c0c0c0;
+        .hero-description {
+            max-width: 650px;
+
+            margin: 0;
+
+            color: var(--muted);
+            font-size: 17px;
         }
 
-        .instructions li {
-            margin-bottom: 10px;
+        /* Toolbar */
+
+        .toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+
+            gap: 12px;
+
+            margin-bottom: 20px;
         }
 
-        .instructions code {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 2px 6px;
-            border-radius: 4px;
-            color: #64c8ff;
-            font-family: 'Courier New', monospace;
+        .plugin-count {
+            color: var(--dim);
+            font-size: 13px;
         }
 
-        @keyframes slideInLeft {
-            from {
-                opacity: 0;
-                transform: translateX(-50px);
-            }
-            to {
-                opacity: 1;
-                transform: translateX(0);
-            }
+        .search {
+            width: 330px;
+
+            padding: 11px 13px;
+
+            background: var(--surface);
+
+            border: 1px solid var(--border);
+            border-radius: 9px;
+
+            outline: none;
+
+            color: var(--text);
         }
 
-        /* Plugins Section */
-        .plugins-section {
-            margin-bottom: 80px;
+        .search::placeholder {
+            color: var(--dim);
         }
 
-        .section-title {
-            font-size: 2rem;
-            margin-bottom: 40px;
-            text-align: center;
-            color: #64c8ff;
-            position: relative;
-            padding-bottom: 15px;
+        .search:focus {
+            border-color: var(--border-hover);
         }
 
-        .section-title::after {
-            content: '';
-            position: absolute;
-            width: 60px;
-            height: 3px;
-            background: linear-gradient(90deg, #64c8ff, #ff64c8);
-            bottom: 0;
-            left: 50%;
-            transform: translateX(-50%);
-        }
+        /* Plugin grid */
 
-        /* Plugins Grid */
-        .plugins-grid {
+        .plugins {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-            gap: 30px;
-            animation: staggerIn 1s ease-out;
+
+            grid-template-columns:
+                repeat(2, minmax(0, 1fr));
+
+            gap: 10px;
         }
 
-        @keyframes staggerIn {
-            from {
-                opacity: 0;
-                transform: translateY(30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        .plugin {
+            display: block;
+
+            padding: 19px 20px;
+
+            background: var(--surface);
+
+            border: 1px solid var(--border);
+            border-radius: 10px;
+
+            transition:
+                transform 0.15s ease,
+                background 0.15s ease,
+                border-color 0.15s ease;
         }
 
-        /* Plugin Card */
-        .plugin-card {
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(100, 200, 255, 0.3);
-            border-radius: 12px;
-            padding: 25px;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            backdrop-filter: blur(10px);
-            cursor: pointer;
-            position: relative;
-            overflow: hidden;
+        .plugin:hover {
+            transform: translateY(-1px);
+
+            background: var(--surface-hover);
+            border-color: var(--border-hover);
         }
 
-        .plugin-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-            transition: left 0.5s;
-        }
+        .plugin-header {
+            display: flex;
 
-        .plugin-card:hover::before {
-            left: 100%;
-        }
+            align-items: flex-start;
+            justify-content: space-between;
 
-        .plugin-card:hover {
-            transform: translateY(-10px);
-            border-color: rgba(100, 200, 255, 0.6);
-            box-shadow: 0 20px 40px rgba(100, 200, 255, 0.2);
+            gap: 12px;
         }
 
         .plugin-name {
-            font-size: 1.3rem;
-            font-weight: 700;
-            color: #64c8ff;
-            margin-bottom: 8px;
+            font-size: 16px;
+            font-weight: 650;
+
+            letter-spacing: -0.015em;
+        }
+
+        .plugin-version {
+            color: var(--dim);
+
+            font-family:
+                ui-monospace,
+                SFMono-Regular,
+                Menlo,
+                monospace;
+
+            font-size: 12px;
+
+            white-space: nowrap;
         }
 
         .plugin-description {
-            color: #a0a0a0;
-            font-size: 0.95rem;
-            margin-bottom: 15px;
-            min-height: 40px;
+            min-height: 43px;
+
+            margin: 7px 0 18px;
+
+            color: var(--muted);
+
+            font-size: 13.5px;
         }
 
-        .plugin-info {
+        .plugin-footer {
             display: flex;
-            justify-content: space-between;
+
             align-items: center;
-            padding-top: 15px;
-            border-top: 1px solid rgba(100, 200, 255, 0.2);
+            justify-content: space-between;
+
+            color: var(--dim);
+
+            font-size: 12px;
         }
 
-        .install-btn {
-            background: linear-gradient(135deg, #64c8ff, #4da8d8);
-            color: white;
-            border: none;
-            padding: 8px 16px;
+        .copy-button {
+            padding: 5px 9px;
+
+            border: 1px solid var(--border);
             border-radius: 6px;
+
+            background: transparent;
+
+            color: var(--muted);
+
             cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s;
-            font-size: 0.9rem;
+
+            transition:
+                color 0.15s ease,
+                border-color 0.15s ease;
         }
 
-        .install-btn:hover {
-            transform: scale(1.05);
-            box-shadow: 0 5px 15px rgba(100, 200, 255, 0.4);
+        .copy-button:hover {
+            color: var(--text);
+            border-color: var(--border-hover);
         }
 
-        .install-btn.copied {
-            background: linear-gradient(135deg, #64ff64, #48d048);
-        }
+        /* Empty state */
 
-        .plugin-url {
-            color: #808080;
-            font-size: 0.8rem;
-            font-family: 'Courier New', monospace;
-            word-break: break-all;
-            max-width: 150px;
+        .empty {
+            grid-column: 1 / -1;
+
+            padding: 45px;
+
+            text-align: center;
+
+            color: var(--muted);
+
+            border: 1px dashed var(--border);
+            border-radius: 10px;
         }
 
         /* Footer */
-        footer {
-            text-align: center;
-            padding: 40px 20px;
-            color: #606060;
-            border-top: 1px solid rgba(100, 200, 255, 0.1);
-            margin-top: 60px;
-            position: relative;
-            z-index: 1;
-        }
 
-        footer a {
-            color: #64c8ff;
-            text-decoration: none;
-            transition: color 0.3s;
+        footer {
+            margin-top: 70px;
+            padding: 28px 0 40px;
+
+            border-top: 1px solid var(--border);
+
+            color: var(--dim);
+
+            font-size: 13px;
         }
 
         footer a:hover {
-            color: #ff64c8;
+            color: var(--text);
         }
 
-        /* Responsive */
-        @media (max-width: 768px) {
-            header h1 {
-                font-size: 2.5rem;
-            }
+        /* Toast */
 
-            .plugins-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .instructions {
-                padding: 20px;
-            }
-
-            .section-title {
-                font-size: 1.5rem;
-            }
-        }
-
-        /* No Plugins Message */
-        .no-plugins {
-            text-align: center;
-            padding: 60px 20px;
-            color: #808080;
-            font-size: 1.1rem;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #64c8ff;
-        }
-
-        .spinner {
-            display: inline-block;
-            width: 40px;
-            height: 40px;
-            border: 4px solid rgba(100, 200, 255, 0.3);
-            border-top: 4px solid #64c8ff;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        /* Toast Notification */
         .toast {
             position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: rgba(100, 255, 100, 0.9);
-            color: white;
-            padding: 15px 25px;
-            border-radius: 8px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-            animation: slideInRight 0.3s ease-out;
-            z-index: 1000;
+
+            left: 50%;
+            bottom: 24px;
+
+            transform:
+                translateX(-50%)
+                translateY(10px);
+
+            padding: 8px 13px;
+
+            background: #f1f3f5;
+            color: #0b0c0f;
+
+            border-radius: 7px;
+
+            font-size: 13px;
+            font-weight: 600;
+
+            opacity: 0;
+            pointer-events: none;
+
+            transition: 0.18s ease;
         }
 
-        @keyframes slideInRight {
-            from {
-                opacity: 0;
-                transform: translateX(100px);
+        .toast.visible {
+            opacity: 1;
+
+            transform:
+                translateX(-50%)
+                translateY(0);
+        }
+
+        /* Mobile */
+
+        @media (max-width: 700px) {
+            .container {
+                width: min(
+                    calc(100% - 28px),
+                    var(--max-width)
+                );
             }
-            to {
-                opacity: 1;
-                transform: translateX(0);
+
+            header {
+                height: 62px;
+            }
+
+            .hero {
+                padding: 58px 0 38px;
+            }
+
+            .toolbar {
+                align-items: stretch;
+                flex-direction: column;
+            }
+
+            .search {
+                width: 100%;
+            }
+
+            .plugins {
+                grid-template-columns: 1fr;
             }
         }
     </style>
 </head>
+
 <body>
-    <div class="background-animation">
-        <div class="blob"></div>
-        <div class="blob"></div>
-    </div>
+
+<div class="container">
 
     <header>
-        <h1>🎨 fshinz Revenge Plugins</h1>
-        <p>A collection of high-quality plugins for Revenge</p>
+        <a class="brand" href="./">
+            fshinz <span>/ Revenge Plugins</span>
+        </a>
+
+        <a
+            class="github-link"
+            href="https://github.com/fshinz/Revenge-Plugins"
+            target="_blank"
+            rel="noopener noreferrer"
+        >
+            GitHub
+        </a>
     </header>
 
-    <div class="container">
-        <div class="instructions">
-            <h2>📥 How to Install</h2>
-            <ol>
-                <li>Open <strong>Revenge</strong> on your device</li>
-                <li>Go to the <strong>Plugins</strong> section</li>
-                <li>Click <strong>Add Plugin</strong></li>
-                <li>Copy the plugin URL from below and paste it</li>
-                <li>Click <strong>Install</strong> and enjoy! 🚀</li>
-            </ol>
-        </div>
 
-        <div class="plugins-section">
-            <h2 class="section-title">Available Plugins</h2>
-            <div id="plugins-container" class="plugins-grid">
-                <div class="loading">
-                    <div class="spinner"></div>
-                    <p>Loading plugins...</p>
+    <main>
+
+        <section class="hero">
+
+            <div class="eyebrow">
+                REVENGE PLUGINS
+            </div>
+
+            <h1>
+                Small plugins.<br>
+                Useful changes.
+            </h1>
+
+            <p class="hero-description">
+                A collection of plugins made for Revenge.
+                Pick a plugin to view its details and installation URL.
+            </p>
+
+        </section>
+
+
+        <section>
+
+            <div class="toolbar">
+
+                <div
+                    id="plugin-count"
+                    class="plugin-count"
+                >
+                    Loading plugins…
+                </div>
+
+                <input
+                    id="search"
+                    class="search"
+                    type="search"
+                    placeholder="Search plugins…"
+                    autocomplete="off"
+                >
+
+            </div>
+
+
+            <div
+                id="plugins"
+                class="plugins"
+            >
+                <div class="empty">
+                    Loading plugins…
                 </div>
             </div>
-        </div>
-    </div>
+
+        </section>
+
+    </main>
+
 
     <footer>
-        <p>Made with ❤️ by fshinz | <a href="https://github.com/fshinz/Revenge-Plugins" target="_blank">View on GitHub</a></p>
+
+        Built by fshinz ·
+
+        <a
+            href="https://github.com/fshinz/Revenge-Plugins"
+            target="_blank"
+            rel="noopener noreferrer"
+        >
+            source on GitHub
+        </a>
+
     </footer>
 
-    <script>
-        const BASE_URL = 'https://fshinz.github.io/Revenge-Plugins';
-        const PLUGINS_URL = 'https://api.github.com/repos/fshinz/Revenge-Plugins/contents?ref=gh-pages';
+</div>
 
-        async function loadPlugins() {
-            try {
-                const response = await fetch(PLUGINS_URL);
-                const data = await response.json();
 
-                const plugins = [];
+<div
+    id="toast"
+    class="toast"
+></div>
 
-                for (const item of data) {
-                    // Pull folders from the root of gh-pages, skipping workflow or system junk files
-                    if (item.type === 'dir' && item.name !== '.github') {
-                        try {
-                            const manifestResponse = await fetch(`${BASE_URL}/${item.name}/manifest.json`);
-                            if (manifestResponse.ok) {
-                                const manifest = await manifestResponse.json();
-                                plugins.push({
-                                    id: item.name,
-                                    name: manifest.name || item.name,
-                                    description: manifest.description || 'No description available',
-                                    version: manifest.version || '1.0.0',
-                                    url: `${BASE_URL}/${item.name}`
-                                });
+
+<script>
+
+const BASE_URL =
+    "https://fshinz.github.io/Revenge-Plugins";
+
+const GITHUB_API =
+    "https://api.github.com/repos/fshinz/Revenge-Plugins/contents?ref=gh-pages";
+
+
+const pluginsContainer =
+    document.getElementById("plugins");
+
+const searchInput =
+    document.getElementById("search");
+
+const pluginCount =
+    document.getElementById("plugin-count");
+
+const toast =
+    document.getElementById("toast");
+
+
+let plugins = [];
+
+
+/* Escape HTML */
+
+function escapeHtml(value) {
+
+    return String(value ?? "")
+        .replace(/[&<>"']/g, character => ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#039;"
+        }[character]));
+
+}
+
+
+/* Plugin URL */
+
+function getPluginUrl(id) {
+
+    return (
+        BASE_URL +
+        "/" +
+        encodeURI(id) +
+        "/"
+    );
+
+}
+
+
+/* Toast */
+
+function showToast(message) {
+
+    toast.textContent = message;
+
+    toast.classList.add("visible");
+
+    clearTimeout(showToast.timeout);
+
+    showToast.timeout =
+        setTimeout(() => {
+
+            toast.classList.remove("visible");
+
+        }, 1500);
+
+}
+
+
+/* Copy URL */
+
+async function copyPluginUrl(url, event) {
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    try {
+
+        await navigator.clipboard.writeText(url);
+
+        showToast("Plugin URL copied");
+
+    } catch {
+
+        showToast("Couldn't copy URL");
+
+    }
+
+}
+
+
+/* Render plugins */
+
+function renderPlugins() {
+
+    const query =
+        searchInput.value
+            .trim()
+            .toLowerCase();
+
+
+    const filtered =
+        plugins.filter(plugin => {
+
+            return (
+                plugin.name
+                    .toLowerCase()
+                    .includes(query)
+
+                ||
+
+                plugin.description
+                    .toLowerCase()
+                    .includes(query)
+            );
+
+        });
+
+
+    pluginCount.textContent =
+        query
+            ? `${filtered.length} of ${plugins.length} plugins`
+            : `${plugins.length} plugin${plugins.length === 1 ? "" : "s"}`;
+
+
+    if (!filtered.length) {
+
+        pluginsContainer.innerHTML = `
+            <div class="empty">
+                ${
+                    plugins.length
+                        ? "No plugins match that search."
+                        : "No plugins found."
+                }
+            </div>
+        `;
+
+        return;
+
+    }
+
+
+    pluginsContainer.innerHTML =
+        filtered.map(plugin => {
+
+            const url =
+                getPluginUrl(plugin.id);
+
+
+            return `
+
+                <a
+                    class="plugin"
+                    href="${url}"
+                >
+
+                    <div class="plugin-header">
+
+                        <div class="plugin-name">
+                            ${escapeHtml(plugin.name)}
+                        </div>
+
+                        <div class="plugin-version">
+                            ${
+                                plugin.version
+                                    ? "v" + escapeHtml(plugin.version)
+                                    : "latest"
                             }
-                        } catch (e) {
-                            console.warn(`Failed to load manifest for ${item.name}`);
-                        }
+                        </div>
+
+                    </div>
+
+
+                    <div class="plugin-description">
+                        ${escapeHtml(
+                            plugin.description ||
+                            "No description available."
+                        )}
+                    </div>
+
+
+                    <div class="plugin-footer">
+
+                        <span>
+                            ${escapeHtml(plugin.id)}
+                        </span>
+
+                        <button
+                            class="copy-button"
+                            onclick='copyPluginUrl(
+                                ${JSON.stringify(url)},
+                                event
+                            )'
+                        >
+                            Copy URL
+                        </button>
+
+                    </div>
+
+                </a>
+
+            `;
+
+        }).join("");
+
+}
+
+
+/* Load plugins */
+
+async function loadPlugins() {
+
+    try {
+
+        const response =
+            await fetch(
+                GITHUB_API,
+                {
+                    headers: {
+                        Accept:
+                            "application/vnd.github+json"
                     }
                 }
+            );
 
-                displayPlugins(plugins);
-            } catch (error) {
-                console.error('Error loading plugins:', error);
-                document.getElementById('plugins-container').innerHTML = `
-                    <div class="no-plugins">
-                        <p>Unable to load plugins. Please try again later.</p>
-                    </div>
-                `;
-            }
+
+        if (!response.ok) {
+            throw new Error("GitHub API error");
         }
 
-        function displayPlugins(plugins) {
-            const container = document.getElementById('plugins-container');
 
-            if (plugins.length === 0) {
-                container.innerHTML = `
-                    <div class="no-plugins">
-                        <p>No plugins available yet. Check back soon! 🔜</p>
-                    </div>
-                `;
-                return;
-            }
+        const files =
+            await response.json();
 
-            container.innerHTML = plugins.map(plugin => `
-                <div class="plugin-card">
-                    <div class="plugin-name">${escapeHtml(plugin.name)}</div>
-                    <div class="plugin-description">${escapeHtml(plugin.description)}</div>
-                    <div class="plugin-info">
-                        <span class="plugin-url">${plugin.url}</span>
-                        <button class="install-btn" onclick="copyToClipboard('${plugin.url}', this)">
-                            📋 Copy
-                        </button>
-                    </div>
-                </div>
-            `).join('');
-        }
 
-        function copyToClipboard(text, button) {
-            navigator.clipboard.writeText(text).then(() => {
-                const originalText = button.textContent;
-                button.textContent = '✓ Copied!';
-                button.classList.add('copied');
+        const folders =
+            files.filter(file =>
+                file.type === "dir" &&
+                file.name !== ".github" &&
+                !file.name.startsWith(".")
+            );
 
-                showToast('Plugin URL copied! 🎉');
 
-                setTimeout(() => {
-                    button.textContent = originalText;
-                    button.classList.remove('copied');
-                }, 2000);
-            }).catch(err => {
-                console.error('Failed to copy:', err);
-                showToast('Failed to copy URL');
-            });
-        }
+        const loaded =
+            await Promise.all(
 
-        function showToast(message) {
-            const toast = document.createElement('div');
-            toast.className = 'toast';
-            toast.textContent = message;
-            document.body.appendChild(toast);
+                folders.map(async folder => {
 
-            setTimeout(() => {
-                toast.remove();
-            }, 3000);
-        }
+                    try {
 
-        function escapeHtml(text) {
-            const map = {
-                '&': '&amp;',
-                '<': '&lt;',
-                '>': '&gt;',
-                '"': '&quot;',
-                "'": '&#039;'
-            };
-            return text.replace(/[&<>"']/g, m => map[m]);
-        }
+                        const response =
+                            await fetch(
+                                `${BASE_URL}/${encodeURI(folder.name)}/manifest.json`
+                            );
 
-        // Load plugins when page loads
-        loadPlugins();
-    </script>
+
+                        if (!response.ok) {
+                            return null;
+                        }
+
+
+                        const manifest =
+                            await response.json();
+
+
+                        return {
+
+                            id:
+                                folder.name,
+
+                            name:
+                                manifest.name ||
+                                folder.name,
+
+                            description:
+                                manifest.description ||
+                                "",
+
+                            version:
+                                manifest.version ||
+                                ""
+
+                        };
+
+                    } catch {
+
+                        return null;
+
+                    }
+
+                })
+
+            );
+
+
+        plugins =
+            loaded
+                .filter(Boolean)
+                .sort((a, b) =>
+                    a.name.localeCompare(
+                        b.name,
+                        undefined,
+                        {
+                            sensitivity: "base"
+                        }
+                    )
+                );
+
+
+        renderPlugins();
+
+    } catch (error) {
+
+        console.error(error);
+
+        pluginCount.textContent =
+            "Couldn't load plugins";
+
+        pluginsContainer.innerHTML = `
+            <div class="empty">
+                GitHub's API couldn't be reached right now.
+            </div>
+        `;
+
+    }
+
+}
+
+
+searchInput.addEventListener(
+    "input",
+    renderPlugins
+);
+
+
+loadPlugins();
+
+</script>
+
 </body>
 </html>
