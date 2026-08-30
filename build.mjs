@@ -27,17 +27,12 @@ const extensions = [
 ];
 
 
-/**
- * Rollup plugins
- *
- * These handle:
- * - Node module resolution
- * - CommonJS packages
- * - TypeScript / JSX / JavaScript
- * - Minification
- *
- * @type import("rollup").InputPluginOption
+/*
+ * ---------------------------------------------------------
+ * ROLLUP PLUGINS
+ * ---------------------------------------------------------
  */
+
 const plugins = [
 
     nodeResolve(),
@@ -55,50 +50,55 @@ const plugins = [
                 return null;
             }
 
+            const isTypeScript =
+                ext.includes("ts");
 
-            const ts = ext.includes("ts");
+            const isTSX =
+                isTypeScript &&
+                ext.endsWith("x");
 
-            const tsx = ts
-                ? ext.endsWith("x")
-                : undefined;
-
-            const jsx = !ts
-                ? ext.endsWith("x")
-                : undefined;
+            const isJSX =
+                !isTypeScript &&
+                ext.endsWith("x");
 
 
-            const result = await swc.transform(
-                code,
-                {
-                    filename: id,
+            const result =
+                await swc.transform(
+                    code,
+                    {
+                        filename: id,
 
-                    jsc: {
-                        externalHelpers: true,
+                        jsc: {
+                            externalHelpers: true,
 
-                        parser: {
-                            syntax:
-                                ts
-                                    ? "typescript"
-                                    : "ecmascript",
+                            parser: {
+                                syntax:
+                                    isTypeScript
+                                        ? "typescript"
+                                        : "ecmascript",
 
-                            tsx,
-                            jsx
+                                tsx: isTSX,
+                                jsx: isJSX
+                            }
+                        },
+
+                        env: {
+                            targets: "defaults",
+
+                            include: [
+                                "transform-classes",
+                                "transform-arrow-functions"
+                            ]
                         }
-                    },
-
-                    env: {
-                        targets: "defaults",
-
-                        include: [
-                            "transform-classes",
-                            "transform-arrow-functions"
-                        ]
                     }
-                }
-            );
+                );
 
 
-            return result.code;
+            return {
+                code: result.code,
+                map: result.map
+            };
+
         }
     },
 
@@ -113,23 +113,15 @@ const plugins = [
  * ---------------------------------------------------------
  * CLEAN DIST
  * ---------------------------------------------------------
- *
- * Every build starts from a completely clean dist folder.
  */
 
-try {
-
-    await rm(
-        "./dist",
-        {
-            recursive: true,
-            force: true
-        }
-    );
-
-} catch (e) {
-    // Nothing to clean.
-}
+await rm(
+    "./dist",
+    {
+        recursive: true,
+        force: true
+    }
+);
 
 
 await mkdir(
@@ -142,62 +134,129 @@ await mkdir(
 
 /*
  * ---------------------------------------------------------
- * READ PLUGINS
+ * LOAD PLUGIN PAGE TEMPLATE
  * ---------------------------------------------------------
  *
- * Every folder inside ./plugins is treated as a plugin.
+ * This is the page that every plugin gets.
  *
  * Example:
  *
- * plugins/
- * ├── NoDelete+/
- * │   ├── manifest.json
- * │   └── index.ts
- * │
- * └── ValidUser/
- *     ├── manifest.json
- *     └── index.ts
+ * /NoDelete+/
+ * /ValidUser/
+ * /FixInvalidMentions/
+ *
+ * Each generated folder gets:
+ *
+ * index.js
+ * manifest.json
+ * index.html
+ *
+ * ---------------------------------------------------------
  */
 
-for (
-    let plug of await readdir("./plugins")
-) {
+let pluginPageTemplate;
+
+try {
+
+    pluginPageTemplate =
+        await readFile(
+            "./docs/plugin.html",
+            "utf8"
+        );
+
+} catch (error) {
+
+    console.error(
+        "❌ docs/plugin.html could not be found."
+    );
+
+    console.error(
+        "Create docs/plugin.html before running the build."
+    );
+
+    process.exit(1);
+
+}
+
+
+/*
+ * ---------------------------------------------------------
+ * FIND PLUGINS
+ * ---------------------------------------------------------
+ */
+
+const pluginFolders =
+    await readdir(
+        "./plugins",
+        {
+            withFileTypes: true
+        }
+    );
+
+
+const pluginsToBuild =
+    pluginFolders.filter(
+        entry =>
+            entry.isDirectory()
+    );
+
+
+/*
+ * ---------------------------------------------------------
+ * BUILD EVERY PLUGIN
+ * ---------------------------------------------------------
+ */
+
+for (const pluginFolder of pluginsToBuild) {
+
+    const plug =
+        pluginFolder.name;
+
 
     try {
 
         /*
-         * Read the plugin manifest.
+         * -------------------------------------------------
+         * READ MANIFEST
+         * -------------------------------------------------
          */
 
-        const manifest =
-            JSON.parse(
-                await readFile(
-                    `./plugins/${plug}/manifest.json`
-                )
+        const manifestPath =
+            `./plugins/${plug}/manifest.json`;
+
+
+        let manifest;
+
+        try {
+
+            manifest =
+                JSON.parse(
+                    await readFile(
+                        manifestPath,
+                        "utf8"
+                    )
+                );
+
+        } catch (error) {
+
+            console.warn(
+                `⚠️ Skipping ${plug} - manifest.json not found or invalid.`
             );
+
+            continue;
+
+        }
 
 
         /*
-         * Output paths.
+         * -------------------------------------------------
+         * OUTPUT DIRECTORY
+         * -------------------------------------------------
          */
 
         const pluginDist =
             `./dist/${plug}`;
 
-        const outPath =
-            `${pluginDist}/index.js`;
-
-        const pluginPage =
-            `${pluginDist}/index.html`;
-
-        const pluginManifest =
-            `${pluginDist}/manifest.json`;
-
-
-        /*
-         * Make sure the plugin's
-         * output directory exists.
-         */
 
         await mkdir(
             pluginDist,
@@ -207,185 +266,283 @@ for (
         );
 
 
+        const outputFile =
+            `${pluginDist}/index.js`;
+
+
         /*
          * -------------------------------------------------
          * BUILD PLUGIN
          * -------------------------------------------------
          */
 
-        try {
+        const bundle =
+            await rollup({
 
-            const bundle =
-                await rollup({
+                input:
+                    `./plugins/${plug}/${manifest.main}`,
 
-                    input:
-                        `./plugins/${plug}/${manifest.main}`,
-
-                    onwarn: () => {},
-
-                    plugins
-
-                });
-
-
-            /*
-             * Write the compiled plugin.
-             */
-
-            await bundle.write({
-
-                file: outPath,
-
-                globals(id) {
+                onwarn(warning, warn) {
 
                     /*
-                     * Vendetta imports:
-                     *
-                     * @vendetta/...
-                     *
-                     * become:
-                     *
-                     * window.@vendetta....
-                     *
-                     * using the same behavior as
-                     * the original build system.
+                     * Keep the original behavior of
+                     * ignoring Rollup warnings.
                      */
 
                     if (
-                        id.startsWith("@vendetta")
+                        warning.code ===
+                        "CIRCULAR_DEPENDENCY"
                     ) {
-
-                        return id
-                            .substring(1)
-                            .replace(/\//g, ".");
-
+                        return;
                     }
 
-
-                    const map = {
-
-                        react:
-                            "window.React"
-
-                    };
-
-
-                    return map[id] || null;
+                    warn(warning);
 
                 },
 
-                format: "iife",
-
-                compact: true,
-
-                exports: "named"
+                plugins
 
             });
 
 
-            await bundle.close();
-
-
-            /*
-             * -------------------------------------------------
-             * HASH
-             * -------------------------------------------------
-             *
-             * Generate a SHA-256 hash of the compiled plugin.
-             */
-
-            const toHash =
-                await readFile(outPath);
-
-
-            manifest.hash =
-                createHash("sha256")
-                    .update(toHash)
-                    .digest("hex");
-
-
-            /*
-             * The compiled file is now always
-             * index.js regardless of the original
-             * source filename.
-             */
-
-            manifest.main =
-                "index.js";
-
-
-            /*
-             * Write the generated manifest.
-             */
-
-            await writeFile(
-                pluginManifest,
-                JSON.stringify(manifest)
-            );
-
-
-            /*
-             * -------------------------------------------------
-             * PLUGIN WEBSITE PAGE
-             * -------------------------------------------------
-             *
-             * Instead of generating an empty HTML file,
-             * copy docs/plugin.html.
-             *
-             * This gives every plugin its own page:
-             *
-             * /NoDelete+/
-             * /ValidUser/
-             * /FixInvalidMentions/
-             *
-             * The page itself loads ./manifest.json,
-             * so it automatically displays the correct
-             * plugin information.
-             */
-
-            const pluginPageTemplate =
-                await readFile(
-                    "./docs/plugin.html",
-                    "utf8"
-                );
-
-
-            await writeFile(
-                pluginPage,
-                pluginPageTemplate
-            );
-
-
-            /*
-             * Done.
-             */
-
-            console.log(
-                `✅ Successfully built ${manifest.name}!`
-            );
-
-        } catch (e) {
-
-            console.error(
-                `❌ Failed to build plugin ${plug}...`,
-                e
-            );
-
-            process.exit(1);
-
-        }
-
-    } catch (e) {
-
         /*
-         * If a folder doesn't contain a manifest,
-         * skip it instead of stopping the entire build.
+         * -------------------------------------------------
+         * WRITE BUNDLE
+         * -------------------------------------------------
          */
 
-        console.warn(
-            `⚠️ Skipping ${plug} - no manifest.json found`
+        await bundle.write({
+
+            file:
+                outputFile,
+
+            format:
+                "iife",
+
+            compact:
+                true,
+
+            exports:
+                "named",
+
+            globals(id) {
+
+                /*
+                 * Vendetta modules
+                 *
+                 * @vendetta/foo
+                 *
+                 * become:
+                 *
+                 * window.@vendetta.foo
+                 */
+
+                if (
+                    id.startsWith("@vendetta")
+                ) {
+
+                    return id
+                        .substring(1)
+                        .replace(
+                            /\//g,
+                            "."
+                        );
+
+                }
+
+
+                /*
+                 * React
+                 */
+
+                if (
+                    id === "react"
+                ) {
+
+                    return "window.React";
+
+                }
+
+
+                return null;
+
+            }
+
+        });
+
+
+        await bundle.close();
+
+
+        /*
+         * -------------------------------------------------
+         * HASH
+         * -------------------------------------------------
+         */
+
+        const compiledPlugin =
+            await readFile(
+                outputFile
+            );
+
+
+        manifest.hash =
+            createHash("sha256")
+                .update(compiledPlugin)
+                .digest("hex");
+
+
+        /*
+         * The built plugin is always called
+         * index.js.
+         */
+
+        manifest.main =
+            "index.js";
+
+
+        /*
+         * -------------------------------------------------
+         * WRITE MANIFEST
+         * -------------------------------------------------
+         */
+
+        await writeFile(
+
+            `${pluginDist}/manifest.json`,
+
+            JSON.stringify(
+                manifest,
+                null,
+                2
+            )
+
         );
+
+
+        /*
+         * -------------------------------------------------
+         * WRITE PLUGIN WEBSITE
+         * -------------------------------------------------
+         *
+         * Every plugin gets its own index.html.
+         *
+         * Example:
+         *
+         * dist/NoDelete+/index.html
+         *
+         * dist/ValidUser/index.html
+         *
+         * dist/FixInvalidMentions/index.html
+         *
+         * The page reads ./manifest.json automatically.
+         */
+
+        await writeFile(
+
+            `${pluginDist}/index.html`,
+
+            pluginPageTemplate
+
+        );
+
+
+        console.log(
+            `✅ Successfully built ${manifest.name || plug}!`
+        );
+
+
+    } catch (error) {
+
+        console.error(
+            `❌ Failed to build plugin ${plug}`
+        );
+
+        console.error(error);
+
+        process.exit(1);
 
     }
 
 }
+
+
+/*
+ * ---------------------------------------------------------
+ * COPY MAIN WEBSITE
+ * ---------------------------------------------------------
+ *
+ * docs/index.html becomes:
+ *
+ * dist/index.html
+ *
+ * This is the homepage:
+ *
+ * https://fshinz.pages.dev/
+ *
+ * ---------------------------------------------------------
+ */
+
+try {
+
+    const homepage =
+        await readFile(
+            "./docs/index.html",
+            "utf8"
+        );
+
+
+    await writeFile(
+        "./dist/index.html",
+        homepage
+    );
+
+
+} catch (error) {
+
+    console.error(
+        "❌ docs/index.html could not be found."
+    );
+
+    process.exit(1);
+
+}
+
+
+/*
+ * ---------------------------------------------------------
+ * NOJEKILL
+ * ---------------------------------------------------------
+ *
+ * Makes sure GitHub Pages / static hosting doesn't
+ * accidentally treat the output as something else.
+ * ---------------------------------------------------------
+ */
+
+try {
+
+    await writeFile(
+        "./dist/.nojekyll",
+        ""
+    );
+
+} catch {
+    // Ignore.
+}
+
+
+/*
+ * ---------------------------------------------------------
+ * DONE
+ * ---------------------------------------------------------
+ */
+
+console.log("");
+console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+console.log("✅ Build completed successfully!");
+console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+console.log("");
+console.log(
+    `Built ${pluginsToBuild.length} plugin(s).`
+);
+console.log("");
