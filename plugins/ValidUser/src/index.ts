@@ -1,5 +1,5 @@
 import { findByProps } from "@vendetta/metro";
-import { before, after } from "@vendetta/patcher";
+import { before, after, instead } from "@vendetta/patcher";
 import { logger } from "@vendetta";
 import { React } from "@vendetta/metro/common";
 import { findInReactTree } from "@vendetta/utils";
@@ -14,6 +14,11 @@ const GatewayConnection = findByProps("getGateway", "send");
 const SelectedGuildStore = findByProps("getGuildId", "getChannelId");
 const UserStore = findByProps("getUser", "getCurrentUser");
 const UserUtils = findByProps("fetchProfile", "getUser", "fetchUser");
+const AvatarUtils = findByProps("getDefaultAvatarURL", "getUserAvatarURL");
+
+const DefaultAvatarAsset = getAssetIDByName("user_avatar_0") ?? 
+    getAssetIDByName("avatar_default") ?? 
+    getAssetIDByName("ic_avatar_default");
 
 const MentionIcon = getAssetIDByName("ic_mention_24px") ??
     getAssetIDByName("MentionIcon") ??
@@ -109,6 +114,24 @@ function extractAllMentionIds(message: any): string[] {
 
 function isUserCached(userId: string): boolean {
     return !!UserStore?.getUser?.(userId);
+}
+
+function createDeletedUserPayload(userId: string) {
+    return {
+        id: userId,
+        username: "Deleted User",
+        global_name: null,
+        globalName: null,
+        discriminator: "0000",
+        avatar: null,
+        avatarDecorationData: null,
+        bot: false,
+        system: false,
+        flags: 0,
+        publicFlags: 0,
+        public_flags: 0,
+        guildMemberAvatars: {},
+    };
 }
 
 function cloneComponents(components: any[]): any[] {
@@ -245,7 +268,7 @@ async function forceUIRefresh(channelId: string, msg: any) {
             embeds: embeds
         }
     });
-    await sleep(1110);
+    await sleep(110);
 
     if (isCV2) {
         Dispatcher.dispatch({
@@ -295,19 +318,6 @@ async function fetchUsersViaGateway(userIds: string[]): Promise<boolean> {
     return true;
 }
 
-function createDeletedUserPayload(userId: string) {
-    return {
-        id: userId,
-        username: "Deleted User",
-        global_name: "Deleted User",
-        discriminator: "0000",
-        avatar: null,
-        bot: false,
-        public_flags: 0,
-        flags: 0,
-    };
-}
-
 async function fetchUser(userId: string) {
     if (typeof UserUtils?.fetchUser === "function") {
         try {
@@ -334,7 +344,7 @@ async function fetchUser(userId: string) {
             return normalizedUser.username;
         }
     } catch (err) {
-        logger.warn(`[ValidUser] User ${userId} non-existent or deleted. Patching store fallback...`);
+        logger.warn(`[ValidUser] User ${userId} non-existent or deleted. Patching store with Deleted User payload...`);
         Dispatcher.dispatch({
             type: "USER_UPDATE",
             user: createDeletedUserPayload(userId)
@@ -397,11 +407,29 @@ async function fixUnknownMentions(message: any) {
     }
 }
 
-let unpatchOpenLazy: (() => void) | null = null;
+let unpatches: (() => void)[] = [];
 
 export default {
     onLoad() {
-        unpatchOpenLazy = before("openLazy", ActionSheet, ([comp, args, msg]) => {
+        // Patch default avatar resolution to prevent crashes on invalid/missing user objects
+        if (AvatarUtils?.getDefaultAvatarURL) {
+            unpatches.push(
+                instead("getDefaultAvatarURL", AvatarUtils, (args, orig) => {
+                    const [user] = args;
+                    if (!user || !user.id || typeof user.id !== "string") {
+                        return DefaultAvatarAsset;
+                    }
+                    try {
+                        return orig(...args);
+                    } catch (err) {
+                        logger.warn("[ValidUser] Safe catch in getDefaultAvatarURL:", err);
+                        return DefaultAvatarAsset;
+                    }
+                })
+            );
+        }
+
+        const unpatchOpenLazy = before("openLazy", ActionSheet, ([comp, args, msg]) => {
             if (args !== "MessageLongPressActionSheet" || !msg?.message) return;
 
             const message = msg.message;
@@ -458,10 +486,14 @@ export default {
                 logger.error("[ValidUser] Failed to resolve action sheet component:", err);
             });
         });
+
+        unpatches.push(unpatchOpenLazy);
     },
 
     onUnload() {
-        unpatchOpenLazy?.();
-        unpatchOpenLazy = null;
+        for (const unpatch of unpatches) {
+            try { unpatch(); } catch {}
+        }
+        unpatches = [];
     },
 };
