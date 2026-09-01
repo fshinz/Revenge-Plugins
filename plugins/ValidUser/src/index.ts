@@ -16,10 +16,6 @@ const UserStore = findByProps("getUser", "getCurrentUser");
 const UserUtils = findByProps("fetchProfile", "getUser", "fetchUser");
 const AvatarUtils = findByProps("getDefaultAvatarURL", "getUserAvatarURL");
 
-const DefaultAvatarAsset = getAssetIDByName("user_avatar_0") ?? 
-    getAssetIDByName("avatar_default") ?? 
-    getAssetIDByName("ic_avatar_default");
-
 const MentionIcon = getAssetIDByName("ic_mention_24px") ??
     getAssetIDByName("MentionIcon") ??
     getAssetIDByName("mention");
@@ -27,6 +23,27 @@ const MentionIcon = getAssetIDByName("ic_mention_24px") ??
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const MENTION_REGEX = /<@!?(\d{17,19})>/g;
+
+// Calculates the exact 0-5 avatar index using Discord's snowflake formula
+function getDefaultAvatarIndex(userId?: string): number {
+    if (!userId) return 0;
+    try {
+        return Number((BigInt(userId) >> 22n) % 6n);
+    } catch {
+        return 0;
+    }
+}
+
+// Maps the snowflake index to default_avatar_0 through default_avatar_5 (and _small variants)
+function getDefaultAvatarAsset(userId?: string, small = false): number {
+    const index = getDefaultAvatarIndex(userId);
+    const suffix = small ? "_small" : "";
+
+    return getAssetIDByName(`default_avatar_${index}${suffix}`) ??
+           getAssetIDByName(`default_avatar_${index}`) ??
+           getAssetIDByName("default_avatar_0") ??
+           getAssetIDByName("default_avatar_0_small");
+}
 
 function extractIdsFromText(text: string): string[] {
     if (!text) return [];
@@ -131,6 +148,7 @@ function createDeletedUserPayload(userId: string) {
         publicFlags: 0,
         public_flags: 0,
         guildMemberAvatars: {},
+        defaultAvatarIndex: getDefaultAvatarIndex(userId)
     };
 }
 
@@ -344,7 +362,7 @@ async function fetchUser(userId: string) {
             return normalizedUser.username;
         }
     } catch (err) {
-        logger.warn(`[ValidUser] User ${userId} non-existent or deleted. Patching store with Deleted User payload...`);
+        logger.warn(`[ValidUser] User ${userId} non-existent or deleted. Dispatching Deleted User payload...`);
         Dispatcher.dispatch({
             type: "USER_UPDATE",
             user: createDeletedUserPayload(userId)
@@ -391,7 +409,7 @@ async function fixUnknownMentions(message: any) {
 
     await sleep(200);
 
-    // Final safety check for any remaining uncached accounts (e.g. deleted users)
+    // Final safety check for missing accounts
     const stillUncached = ids.filter(id => !isUserCached(id));
     if (stillUncached.length > 0) {
         for (const missingId of stillUncached) {
@@ -411,19 +429,19 @@ let unpatches: (() => void)[] = [];
 
 export default {
     onLoad() {
-        // Patch default avatar resolution to prevent crashes on invalid/missing user objects
+        // Safe interceptor for getDefaultAvatarURL returning the computed asset ID
         if (AvatarUtils?.getDefaultAvatarURL) {
             unpatches.push(
                 instead("getDefaultAvatarURL", AvatarUtils, (args, orig) => {
                     const [user] = args;
                     if (!user || !user.id || typeof user.id !== "string") {
-                        return DefaultAvatarAsset;
+                        return getDefaultAvatarAsset(user?.id);
                     }
                     try {
                         return orig(...args);
                     } catch (err) {
                         logger.warn("[ValidUser] Safe catch in getDefaultAvatarURL:", err);
-                        return DefaultAvatarAsset;
+                        return getDefaultAvatarAsset(user.id);
                     }
                 })
             );
