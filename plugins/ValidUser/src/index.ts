@@ -35,12 +35,10 @@ function extractIdsFromComponents(components: any[]): string[] {
     for (const component of components) {
         if (!component) continue;
 
-        // Text Display component: { type: 10, content: "..." }
         if (component.type === 10 || typeof component.content === "string") {
             ids.push(...extractIdsFromText(component.content));
         }
 
-        // Container / Section / Action Row etc. nest further components
         if (Array.isArray(component.components)) {
             ids.push(...extractIdsFromComponents(component.components));
         }
@@ -76,7 +74,6 @@ function extractAllMentionIds(message: any): string[] {
         ids.push(...extractIdsFromComponents(message.components));
     }
 
-    // Forwarded messages - Discord stores them in messageSnapshots
     if (Array.isArray(message.messageSnapshots)) {
         for (const snapshot of message.messageSnapshots) {
             const snap = snapshot.message;
@@ -298,30 +295,53 @@ async function fetchUsersViaGateway(userIds: string[]): Promise<boolean> {
     return true;
 }
 
+function createDeletedUserPayload(userId: string) {
+    return {
+        id: userId,
+        username: "Deleted User",
+        global_name: "Deleted User",
+        discriminator: "0000",
+        avatar: null,
+        bot: false,
+        public_flags: 0,
+        flags: 0,
+    };
+}
+
 async function fetchUser(userId: string) {
     if (typeof UserUtils?.fetchUser === "function") {
         try {
             return await UserUtils.fetchUser(userId);
         } catch (e) {
-            logger.warn(`[ValidUser] UserUtils.fetchUser failed for ${userId}, falling back to REST:`, e);
+            logger.warn(`[ValidUser] UserUtils.fetchUser failed for ${userId}, trying REST fallback:`, e);
         }
     }
 
-    const res = await RestAPI.get({ url: `/users/${userId}` });
-    if (res.body) {
-        const normalizedUser = {
-            ...res.body,
-            discriminator: res.body.discriminator ?? "0",
-            bot: !!res.body.bot,
-            avatar: res.body.avatar ?? null,
-        };
+    try {
+        const res = await RestAPI.get({ url: `/users/${userId}` });
+        if (res.body) {
+            const normalizedUser = {
+                ...res.body,
+                discriminator: res.body.discriminator ?? "0",
+                bot: !!res.body.bot,
+                avatar: res.body.avatar ?? null,
+            };
 
+            Dispatcher.dispatch({
+                type: "USER_UPDATE",
+                user: normalizedUser
+            });
+            return normalizedUser.username;
+        }
+    } catch (err) {
+        logger.warn(`[ValidUser] User ${userId} non-existent or deleted. Patching store fallback...`);
         Dispatcher.dispatch({
             type: "USER_UPDATE",
-            user: normalizedUser
+            user: createDeletedUserPayload(userId)
         });
-        return normalizedUser.username;
+        return "Deleted User";
     }
+
     throw new Error("Empty API response body");
 }
 
@@ -361,19 +381,13 @@ async function fixUnknownMentions(message: any) {
 
     await sleep(200);
 
-    // Prevent React Native crash if fetching fails or user is deleted
+    // Final safety check for any remaining uncached accounts (e.g. deleted users)
     const stillUncached = ids.filter(id => !isUserCached(id));
     if (stillUncached.length > 0) {
         for (const missingId of stillUncached) {
             Dispatcher.dispatch({
                 type: "USER_UPDATE",
-                user: {
-                    id: missingId,
-                    username: "Unknown User",
-                    discriminator: "0",
-                    avatar: null,
-                    bot: false
-                }
+                user: createDeletedUserPayload(missingId)
             });
         }
     }
