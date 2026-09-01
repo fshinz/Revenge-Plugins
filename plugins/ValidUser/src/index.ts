@@ -12,7 +12,8 @@ const Dispatcher = findByProps("dispatch", "subscribe");
 const RestAPI = findByProps("get", "post", "del", "patch");
 const GatewayConnection = findByProps("getGateway", "send");
 const SelectedGuildStore = findByProps("getGuildId", "getChannelId");
-const { getUser } = findByProps("getUser", "getCurrentUser");
+const UserStore = findByProps("getUser", "getCurrentUser");
+const UserUtils = findByProps("fetchProfile", "getUser", "fetchUser");
 
 const MentionIcon = getAssetIDByName("ic_mention_24px") ??
     getAssetIDByName("MentionIcon") ??
@@ -110,7 +111,7 @@ function extractAllMentionIds(message: any): string[] {
 }
 
 function isUserCached(userId: string): boolean {
-    return !!getUser(userId);
+    return !!UserStore?.getUser?.(userId);
 }
 
 function cloneComponents(components: any[]): any[] {
@@ -190,8 +191,8 @@ function toRawEmbed(embed: any): any {
         author: embed.author ? {
             name: embed.author.name,
             url: embed.author.url,
-            icon_url: embed.author.iconURL,
-            proxy_icon_url: embed.author.iconProxyURL
+            icon_url: embed.author.iconURL ?? embed.author.icon_url,
+            proxy_icon_url: embed.author.iconProxyURL ?? embed.author.proxy_icon_url
         } : undefined,
         image: embed.image ? {
             url: embed.image.url,
@@ -208,8 +209,8 @@ function toRawEmbed(embed: any): any {
         video: embed.video,
         provider: embed.provider,
         footer: embed.footer ? {
-            icon_url: embed.footer.iconURL,
-            proxy_icon_url: embed.footer.iconProxyURL,
+            icon_url: embed.footer.iconURL ?? embed.footer.icon_url,
+            proxy_icon_url: embed.footer.iconProxyURL ?? embed.footer.proxy_icon_url,
             ...embed.footer
         } : undefined,
     };
@@ -238,8 +239,6 @@ async function forceUIRefresh(channelId: string, msg: any) {
     const hasComponents = Array.isArray(components) && components.length > 0;
     const isCV2 = hasComponentsV2Flag(msg.flags);
 
-    const Dispatcher = findByProps("dispatch", "subscribe");
-    // Dispatch slight variance update while preserving original embeds array
     Dispatcher.dispatch({
         type: "MESSAGE_UPDATE",
         message: {
@@ -251,7 +250,6 @@ async function forceUIRefresh(channelId: string, msg: any) {
     });
     await sleep(1110);
 
-    // Dispatch original layout state to settle the visual cache
     if (isCV2) {
         Dispatcher.dispatch({
             type: "MESSAGE_UPDATE",
@@ -278,11 +276,9 @@ async function forceUIRefresh(channelId: string, msg: any) {
 }
 
 async function fetchUsersViaGateway(userIds: string[]): Promise<boolean> {
-    const SelectedGuildStore = findByProps("getGuildId", "getChannelId");
     const currentGuildId = SelectedGuildStore?.getGuildId?.();
     if (!currentGuildId) return false;
 
-    const GatewayConnection = findByProps("getGateway", "send");
     const ws = GatewayConnection?.getGateway?.();
     if (!ws) return false;
 
@@ -303,13 +299,28 @@ async function fetchUsersViaGateway(userIds: string[]): Promise<boolean> {
 }
 
 async function fetchUser(userId: string) {
+    if (typeof UserUtils?.fetchUser === "function") {
+        try {
+            return await UserUtils.fetchUser(userId);
+        } catch (e) {
+            logger.warn(`[ValidUser] UserUtils.fetchUser failed for ${userId}, falling back to REST:`, e);
+        }
+    }
+
     const res = await RestAPI.get({ url: `/users/${userId}` });
     if (res.body) {
+        const normalizedUser = {
+            ...res.body,
+            discriminator: res.body.discriminator ?? "0",
+            bot: !!res.body.bot,
+            avatar: res.body.avatar ?? null,
+        };
+
         Dispatcher.dispatch({
             type: "USER_UPDATE",
-            user: res.body
+            user: normalizedUser
         });
-        return res.body.username;
+        return normalizedUser.username;
     }
     throw new Error("Empty API response body");
 }
@@ -321,41 +332,49 @@ async function fixUnknownMentions(message: any) {
 
     if (ids.length === 0) return;
 
-    const uncachedIds: string[] = [];
-    for (const userId of ids) {
-        if (!isUserCached(userId)) {
-            uncachedIds.push(userId);
+    const uncachedIds = ids.filter(id => !isUserCached(id));
+
+    if (uncachedIds.length > 0) {
+        const BULK_THRESHOLD = 5;
+        let success = false;
+
+        if (uncachedIds.length > BULK_THRESHOLD && SelectedGuildStore?.getGuildId?.()) {
+            success = await fetchUsersViaGateway(uncachedIds);
+        }
+
+        if (!success) {
+            const safetyDelay = uncachedIds.length > 10 ? 900 : 250;
+
+            for (let i = 0; i < uncachedIds.length; i++) {
+                const userId = uncachedIds[i];
+                try {
+                    await fetchUser(userId);
+                } catch (err) {
+                    logger.error(`[ValidUser] Fetch Failed for ${userId}:`, err);
+                }
+                if (i < uncachedIds.length - 1) {
+                    await sleep(safetyDelay);
+                }
+            }
         }
     }
 
-    if (uncachedIds.length === 0) {
-        if (channelId && messageId) {
-            await forceUIRefresh(channelId, message);
-        }
-        return;
-    }
+    await sleep(200);
 
-    const BULK_THRESHOLD = 5;
-    let success = false;
-
-    const SelectedGuildStore = findByProps("getGuildId", "getChannelId");
-    if (uncachedIds.length > BULK_THRESHOLD && SelectedGuildStore?.getGuildId?.()) {
-        success = await fetchUsersViaGateway(uncachedIds);
-    }
-
-    if (!success) {
-        const safetyDelay = uncachedIds.length > 10 ? 900 : 250;
-
-        for (let i = 0; i < uncachedIds.length; i++) {
-            const userId = uncachedIds[i];
-            try {
-                await fetchUser(userId);
-            } catch (err) {
-                logger.error(`[ValidUser] Fetch Failed for ${userId}:`, err);
-            }
-            if (i < uncachedIds.length - 1) {
-                await sleep(safetyDelay);
-            }
+    // Prevent React Native crash if fetching fails or user is deleted
+    const stillUncached = ids.filter(id => !isUserCached(id));
+    if (stillUncached.length > 0) {
+        for (const missingId of stillUncached) {
+            Dispatcher.dispatch({
+                type: "USER_UPDATE",
+                user: {
+                    id: missingId,
+                    username: "Unknown User",
+                    discriminator: "0",
+                    avatar: null,
+                    bot: false
+                }
+            });
         }
     }
 
