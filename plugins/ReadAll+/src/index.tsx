@@ -1,9 +1,9 @@
 import { after } from "@vendetta/patcher";
-import { React, ReactNative } from "@vendetta/metro/common";
+import { React, ReactNative as RN } from "@vendetta/metro/common";
 import ReadButton from "./ReadButton";
 import Settings from "./Settings";
 
-const { View } = ReactNative;
+const { View } = RN;
 
 const TAG = "[ReadAll+]";
 const TILE = 48;
