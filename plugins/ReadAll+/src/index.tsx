@@ -1,8 +1,18 @@
 import { after } from "@vendetta/patcher";
 import { React } from "@vendetta/metro/common";
 import { View } from "react-native";
-import ReadButton from "./components/ReadButton";
-import SettingsComponent from "./Settings";
+import { Forms } from "@vendetta/ui/components";
+import { showToast } from "@vendetta/ui/toasts";
+import { getAssetIDByName } from "@vendetta/ui/assets";
+import ReadButton from "./ReadButton";
+import { 
+  addServerException, 
+  removeServerException, 
+  addDMException, 
+  removeDMException, 
+  clearAllExceptions, 
+  getAllExceptions 
+} from "./Settings";
 
 const TAG = "[ReadAckButton]";
 const TILE = 48;
@@ -22,9 +32,7 @@ function isUseGuildsBarProps(exports: any): boolean {
 function patchFooter(ret: any) {
   const ldp = ret?.listDataProps;
   if (!ldp || patchedObjects.has(ldp)) return;
-  if (typeof ldp.footerSize !== "function" || typeof ldp.renderFooter !== "function") {
-    return;
-  }
+  if (typeof ldp.footerSize !== "function" || typeof ldp.renderFooter !== "function") return;
 
   const origFooterSize = ldp.footerSize;
   const origRenderFooter = ldp.renderFooter;
@@ -66,6 +74,98 @@ function scanRegistry(): number {
   }
   return patchedCount;
 }
+
+const SettingsComponent = () => {
+  const [serverInput, setServerInput] = React.useState("");
+  const [dmInput, setDMInput] = React.useState("");
+  const [exceptions, setExceptions] = React.useState(getAllExceptions());
+
+  const refreshExceptions = () => setExceptions(getAllExceptions());
+
+  const handleAddServer = () => {
+    if (serverInput.trim() && addServerException(serverInput.trim())) {
+      showToast("Added server exception", getAssetIDByName("ic_check"));
+      setServerInput("");
+      refreshExceptions();
+    }
+  };
+
+  const handleAddDM = () => {
+    if (dmInput.trim() && addDMException(dmInput.trim())) {
+      showToast("Added DM exception", getAssetIDByName("ic_check"));
+      setDMInput("");
+      refreshExceptions();
+    }
+  };
+
+  return (
+    <React.Fragment>
+      <Forms.FormSection title="Server Exceptions">
+        <Forms.FormInput
+          placeholder="Enter server ID"
+          value={serverInput}
+          onChange={setServerInput}
+          onSubmitEditing={handleAddServer}
+        />
+        <Forms.FormRow label="Add Server" onPress={handleAddServer} />
+        {exceptions.servers.map((server) => (
+          <Forms.FormRow
+            key={server.id}
+            label={server.name}
+            subLabel={server.id}
+            trailing={
+              <Forms.FormRow
+                label="Remove"
+                style={{ color: "#ff4757" }}
+                onPress={() => {
+                  removeServerException(server.id);
+                  refreshExceptions();
+                }}
+              />
+            }
+          />
+        ))}
+      </Forms.FormSection>
+
+      <Forms.FormSection title="DM Exceptions">
+        <Forms.FormInput
+          placeholder="Enter channel ID"
+          value={dmInput}
+          onChange={setDMInput}
+          onSubmitEditing={handleAddDM}
+        />
+        <Forms.FormRow label="Add DM" onPress={handleAddDM} />
+        {exceptions.dms.map((dm) => (
+          <Forms.FormRow
+            key={dm.id}
+            label={dm.name}
+            subLabel={dm.id}
+            trailing={
+              <Forms.FormRow
+                label="Remove"
+                style={{ color: "#ff4757" }}
+                onPress={() => {
+                  removeDMException(dm.id);
+                  refreshExceptions();
+                }}
+              />
+            }
+          />
+        ))}
+      </Forms.FormSection>
+
+      <Forms.FormSection title="Actions">
+        <Forms.FormRow
+          label="Clear All Exceptions"
+          onPress={() => {
+            clearAllExceptions();
+            refreshExceptions();
+          }}
+        />
+      </Forms.FormSection>
+    </React.Fragment>
+  );
+};
 
 export default {
   onLoad() {
