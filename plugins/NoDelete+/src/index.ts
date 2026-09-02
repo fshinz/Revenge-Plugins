@@ -19,7 +19,6 @@ const patches: (() => void)[] = [];
 const deletedCache = new Map<string, any>();
 const editMap = new Map<string, string[]>();
 const commandMap = new Map<string, string>();
-const nonceCache = new Set<string>();
 
 storage.ignore ??= {
   users: [],
@@ -62,65 +61,68 @@ export default {
       AuthStore =
         findByStoreName("AuthenticationStore") || findByProps("getToken");
 
+      patches.push(
+        patchAfter("getMessage", MessageStore, (args, result) => {
+          const [_channelId, id] = args;
+
+          if (!result || result.embeds?.length) {
+            return result;
+          }
+
+          const cached = deletedCache.get(id);
+
+          if (cached?.embeds?.length) {
+            result.embeds = cached.embeds;
+          }
+
+          return result;
+        })
+      );
+
       const getCurrentUserId = () =>
         AuthStore?.getCurrentUser?.()?.id ||
         AuthStore?.getId?.() ||
         MessageStore?.getCurrentUser?.()?.id;
 
-      // Preserve deleted embeds in MessageStore
-      patches.push(
-        patchAfter("getMessage", MessageStore, (args, result) => {
-          const [_channelId, id] = args;
-          if (!result || result.embeds?.length) return result;
-
-          const cached = deletedCache.get(id);
-          if (cached?.embeds?.length) {
-            result.embeds = cached.embeds;
-          }
-          return result;
-        })
-      );
-
-      // MESSAGE_CREATE: Double-dispatch / Nonce Bypass Detection
       patches.push(
         patchBefore("dispatch", FluxDispatcher, (args) => {
           const event = args[0];
-          if (!event?.type || event.type !== "MESSAGE_CREATE") return;
+
+          if (!event?.type) return;
+
+          if (event.type !== "MESSAGE_CREATE") {
+            return;
+          }
 
           const msg = event.message;
-          if (!msg?.channel_id) return;
+
+          if (!msg?.channel_id) {
+            return;
+          }
 
           const currentUserId = getCurrentUserId();
 
-          // Message & Command Nonce Detection
-          const nonce = msg.nonce;
-          if (nonce) {
-            // Check if this nonce was already processed (Double-send / plugin bypass attempt)
-            if (nonceCache.has(nonce)) {
-              const existing = MessageStore?.getMessage(msg.channel_id, nonce);
-              if (existing && !deletedCache.has(existing.id)) {
-                deletedCache.set(existing.id, cloneSnapshot(existing));
-              }
-              delete msg.nonce; // Strip duplicate nonce to prevent overwrite
-            } else {
-              nonceCache.add(nonce);
-              if (nonceCache.size > 500) {
-                const first = nonceCache.values().next().value;
-                if (first) nonceCache.delete(first);
-              }
-            }
+          if (msg.author?.id === currentUserId) {
+            return;
+          }
 
-            // Existing message overwrite check
-            const existing = MessageStore?.getMessage(msg.channel_id, nonce);
+          // Exact original nonce detection (stops duplicate messages & plugin bypass)
+          if (msg.nonce) {
+            const existing = MessageStore?.getMessage(
+              msg.channel_id,
+              msg.nonce
+            );
+
             if (existing && existing.id !== msg.id) {
               if (!deletedCache.has(existing.id)) {
                 deletedCache.set(existing.id, cloneSnapshot(existing));
               }
+
               delete msg.nonce;
             }
           }
 
-          // Command / Interaction Nonce Mapping
+          // Interaction / Command Nonce Mapping
           const interactionId =
             msg.interaction_metadata?.id ||
             msg.interaction?.id ||
@@ -128,6 +130,7 @@ export default {
 
           if (interactionId) {
             commandMap.set(String(interactionId), String(msg.id));
+
             if (commandMap.size > 1000) {
               const firstKey = commandMap.keys().next().value;
               if (firstKey) commandMap.delete(firstKey);
@@ -144,55 +147,64 @@ export default {
         })
       );
 
-      // Pre-cache before MESSAGE_DELETE
       patches.push(
         patchBefore("dispatch", FluxDispatcher, (args) => {
           const event = args[0];
-          if (!event?.type || event.type !== "MESSAGE_DELETE") return;
 
-          const { channelId, id, mlDeleted } = event;
-          if (!id || !channelId) return;
+          if (!event?.type) return;
 
-          const existing = MessageStore?.getMessage(channelId, id);
-          if (existing && !deletedCache.has(id)) {
-            deletedCache.set(id, cloneSnapshot(existing));
+          if (event.type === "MESSAGE_DELETE") {
+            const { channelId, id, mlDeleted } = event;
+
+            if (!id || !channelId) return;
+
+            const existing = MessageStore?.getMessage(channelId, id);
+
+            if (existing && !deletedCache.has(id)) {
+              deletedCache.set(id, cloneSnapshot(existing));
+            }
+
+            if (mlDeleted) delete event.mlDeleted;
           }
-
-          if (mlDeleted) delete event.mlDeleted;
         })
       );
 
-      // Single MESSAGE_DELETE Handler
       patches.push(
         patchBefore("dispatch", FluxDispatcher, (args) => {
           const event = args[0];
+
           if (event?.type !== "MESSAGE_DELETE") return;
           if (!event?.id || !event?.channelId) return;
 
           const currentUserId = getCurrentUserId();
+
           const cachedMsg =
             MessageStore?.getMessage(event.channelId, event.id) ||
             deletedCache.get(event.id);
 
           if (!cachedMsg) return;
 
-          // Deletion Ignored Filters
+          // 100% Skip Ignored Users, Bots, & Own Messages
           if (storage.ignore?.users?.includes(cachedMsg.author?.id)) return;
           if (storage.ignore?.bots && cachedMsg.author?.bot) return;
           if (
             storage.ignore?.ownMessages &&
             cachedMsg.author?.id === currentUserId
-          )
+          ) {
             return;
+          }
 
           if (!deletedCache.has(event.id)) {
             deletedCache.set(event.id, cloneSnapshot(cachedMsg));
           }
 
           const snapshot = deletedCache.get(event.id);
+
           addEmbedLogEntry(snapshotForLog(snapshot, "deleted"));
 
-          const time = snapshot?.deletedAt || moment().format("HH:mm:ss");
+          const time =
+            snapshot?.deletedAt || moment().format("HH:mm:ss");
+
           const automodMessage = buildAutomodMessage(DELETED_TEXT, time);
 
           args[0] = {
@@ -218,10 +230,10 @@ export default {
         })
       );
 
-      // MESSAGE_DELETE_BULK Handler
       patches.push(
         patchBefore("dispatch", FluxDispatcher, (args) => {
           const event = args[0];
+
           if (event?.type !== "MESSAGE_DELETE_BULK") return;
           if (!event?.ids?.length || !event?.channelId) return;
 
@@ -237,13 +249,15 @@ export default {
               deletedCache.get(id);
 
             if (!cachedMsg) continue;
+
             if (storage.ignore?.users?.includes(cachedMsg.author?.id)) continue;
             if (storage.ignore?.bots && cachedMsg.author?.bot) continue;
             if (
               storage.ignore?.ownMessages &&
               cachedMsg.author?.id === currentUserId
-            )
+            ) {
               continue;
+            }
 
             if (!deletedCache.has(id)) {
               deletedCache.set(
@@ -256,7 +270,9 @@ export default {
             }
 
             const snapshot = deletedCache.get(id);
+
             addEmbedLogEntry(snapshotForLog(snapshot, "deleted"));
+
             validCount++;
 
             FluxDispatcher.dispatch({
@@ -287,50 +303,73 @@ export default {
         })
       );
 
-      // MESSAGE_UPDATE Handler (Includes Edit Settings Filters)
+      // MESSAGE_UPDATE Patch with working ignored users check & new edit filters
       patches.push(
         patchBefore("dispatch", FluxDispatcher, (args) => {
           const event = args[0];
+
           if (event?.type !== "MESSAGE_UPDATE") return;
+          if (!event?.message) return;
 
           const newMsg = event.message;
-          if (!newMsg?.id || !newMsg?.channel_id) return;
 
+          if (!newMsg.id || !newMsg.channel_id) return;
           if (!storage.logEdits) return;
 
           const currentUserId = getCurrentUserId();
-
-          // General Ignored Users Filter
-          if (storage.ignore?.users?.includes(newMsg.author?.id)) return;
-
-          // Bot Edits Filter (storage.ignore.botEdits)
-          if (storage.ignore?.botEdits && newMsg.author?.bot) return;
-
-          // Own Edits Filter (storage.ignore.ownEdits)
-          if (
-            storage.ignore?.ownEdits &&
-            newMsg.author?.id === currentUserId
-          ) {
-            return;
-          }
 
           const oldMsg =
             MessageStore?.getMessage(newMsg.channel_id, newMsg.id) ||
             deletedCache.get(newMsg.id);
 
-          // Preserve embeds and components if cleared in update
+          const authorId = newMsg.author?.id || oldMsg?.author?.id;
+          const isBot = newMsg.author?.bot ?? oldMsg?.author?.bot;
+
+          // Check Ignored Users List First
+          if (authorId && storage.ignore?.users?.includes(authorId)) return;
+
+          // General Deletion/Global Bot Ignore
+          if (storage.ignore?.bots && isBot) return;
+
+          // Bot Edits Filter Toggle
+          if (storage.ignore?.botEdits && isBot) return;
+
+          // Own Messages Ignore Check
+          if (
+            storage.ignore?.ownMessages &&
+            authorId === currentUserId
+          ) {
+            return;
+          }
+
+          // Own Edits Filter Toggle
+          if (
+            storage.ignore?.ownEdits &&
+            authorId === currentUserId
+          ) {
+            return;
+          }
+
           if (oldMsg && oldMsg.embeds?.length && !newMsg.embeds?.length) {
             newMsg.embeds = JSON.parse(JSON.stringify(oldMsg.embeds));
           }
+
           if (oldMsg && oldMsg.components?.length && !newMsg.components?.length) {
             newMsg.components = JSON.parse(JSON.stringify(oldMsg.components));
           }
 
           if (!newMsg.content || newMsg.content.trim() === "") return;
-          if (!oldMsg || !oldMsg.content || oldMsg.content === newMsg.content)
+
+          if (
+            !oldMsg ||
+            !oldMsg.content ||
+            oldMsg.content === newMsg.content
+          ) {
             return;
+          }
 
           let history = editMap.get(newMsg.id) || [];
+
           if (
             history.length === 0 ||
             history[history.length - 1] !== oldMsg.content
@@ -344,7 +383,9 @@ export default {
 
           editMap.set(newMsg.id, history);
 
-          addEmbedLogEntry(snapshotForLog(newMsg, "edited", newMsg.content));
+          addEmbedLogEntry(
+            snapshotForLog(newMsg, "edited", newMsg.content)
+          );
         })
       );
 
@@ -366,10 +407,10 @@ export default {
     }
 
     patches.length = 0;
+
     deletedCache.clear();
     editMap.clear();
     commandMap.clear();
-    nonceCache.clear();
 
     showToast("Message Logger unloaded", getAssetIDByName("Check"));
   },
