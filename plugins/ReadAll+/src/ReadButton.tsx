@@ -9,8 +9,7 @@ const Haptic = findByProps("triggerHapticFeedback", "HapticFeedbackTypes");
 
 const TILE = 48;
 const MARGIN = 4;
-const COOLDOWN_MS = 60000;
-let lastUsed = 0;
+const ALERT_KEY = "read_all_options_alert";
 
 const getStores = () => ({
   GuildStore: findByStoreName("GuildStore"),
@@ -28,7 +27,7 @@ const getDMChannels = (ChannelStore: any, GuildChannelStore: any) => {
   if (channelStore.getPrivateChannels) {
     try {
       const privateChannels = channelStore.getPrivateChannels();
-      if (privateChannels && typeof privateChannels === 'object') {
+      if (privateChannels && typeof privateChannels === "object") {
         Object.values(privateChannels).forEach((channel: any) => {
           if (channel && channel.id) dmChannels.push(channel);
         });
@@ -38,87 +37,139 @@ const getDMChannels = (ChannelStore: any, GuildChannelStore: any) => {
   return dmChannels;
 };
 
-const getUnreadChannels = () => {
+const getUnreadChannels = (mode: "all" | "servers" | "dms") => {
   const { GuildStore, GuildChannelStore, ChannelStore, ReadStateStore } = getStores();
-  if (!GuildStore || !ReadStateStore) return [];
+  if (!ReadStateStore) return [];
 
   const channels: Array<any> = [];
 
-  const guilds = GuildStore.getGuilds();
-  Object.values(guilds).forEach((guild: any) => {
-    if (!guild?.id || isServerExcluded(guild.id)) return;
-    try {
-      let guildChannels: any[] = [];
-      const channelStore = GuildChannelStore || ChannelStore;
-      if (channelStore?.getChannels) {
-        const channelData = channelStore.getChannels(guild.id);
-        if (channelData?.SELECTABLE) guildChannels = guildChannels.concat(channelData.SELECTABLE);
-        if (channelData?.VOCAL) guildChannels = guildChannels.concat(channelData.VOCAL);
-      }
-
-      guildChannels.forEach((c: any) => {
-        const channel = c?.channel || c;
-        if (!channel?.id) return;
-        if (ReadStateStore.hasUnread?.(channel.id)) {
-          channels.push({
-            channelId: channel.id,
-            messageId: ReadStateStore.lastMessageId?.(channel.id) || null,
-            readStateType: 0
-          });
+  // 1. Gather Guild Channels
+  if ((mode === "all" || mode === "servers") && GuildStore) {
+    const guilds = GuildStore.getGuilds();
+    Object.values(guilds).forEach((guild: any) => {
+      if (!guild?.id || isServerExcluded(guild.id)) return;
+      try {
+        let guildChannels: any[] = [];
+        const channelStore = GuildChannelStore || ChannelStore;
+        if (channelStore?.getChannels) {
+          const channelData = channelStore.getChannels(guild.id);
+          if (channelData?.SELECTABLE) guildChannels = guildChannels.concat(channelData.SELECTABLE);
+          if (channelData?.VOCAL) guildChannels = guildChannels.concat(channelData.VOCAL);
         }
-      });
-    } catch {}
-  });
 
-  const dmChannels = getDMChannels(ChannelStore, GuildChannelStore);
-  dmChannels.forEach((channel: any) => {
-    if (!channel?.id || isDMExcluded(channel.id)) return;
-    if (ReadStateStore.hasUnread?.(channel.id)) {
-      channels.push({
-        channelId: channel.id,
-        messageId: ReadStateStore.lastMessageId?.(channel.id) || null,
-        readStateType: 0
-      });
-    }
-  });
+        guildChannels.forEach((c: any) => {
+          const channel = c?.channel || c;
+          if (!channel?.id) return;
+          if (ReadStateStore.hasUnread?.(channel.id)) {
+            channels.push({
+              channelId: channel.id,
+              messageId: ReadStateStore.lastMessageId?.(channel.id) || null,
+              readStateType: 0
+            });
+          }
+        });
+      } catch {}
+    });
+  }
+
+  // 2. Gather DM Channels
+  if (mode === "all" || mode === "dms") {
+    const dmChannels = getDMChannels(ChannelStore, GuildChannelStore);
+    dmChannels.forEach((channel: any) => {
+      if (!channel?.id || isDMExcluded(channel.id)) return;
+      if (ReadStateStore.hasUnread?.(channel.id)) {
+        channels.push({
+          channelId: channel.id,
+          messageId: ReadStateStore.lastMessageId?.(channel.id) || null,
+          readStateType: 0
+        });
+      }
+    });
+  }
 
   return channels;
+};
+
+const executeClear = (mode: "all" | "servers" | "dms") => {
+  const { FluxDispatcher } = getStores();
+  const targetChannels = getUnreadChannels(mode);
+
+  if (targetChannels.length === 0) {
+    showToast("No unread notifications!", getAssetIDByName("Small"));
+    return;
+  }
+
+  FluxDispatcher.dispatch({
+    type: "BULK_ACK",
+    context: "APP",
+    channels: targetChannels
+  });
+
+  const label = mode === "all" ? "notifications" : mode === "servers" ? "server channels" : "DMs";
+  showToast(`Cleared ${targetChannels.length} ${label}!`, getAssetIDByName("Check"));
 };
 
 export default function ReadButton() {
   const handlePress = () => {
     Haptic?.triggerHapticFeedback?.(Haptic.HapticFeedbackTypes.SOFT);
 
-    const now = Date.now();
-    const timeSinceLastUse = now - lastUsed;
-    if (timeSinceLastUse < COOLDOWN_MS) {
-      const remainingSeconds = Math.ceil((COOLDOWN_MS - timeSinceLastUse) / 1000);
-      showToast(`Wait ${remainingSeconds}s before reusing`, getAssetIDByName("Small"));
+    const bunny = (globalThis as any).bunny;
+    const openAlert = bunny?.ui?.alerts?.openAlert;
+    const dismissAlert = bunny?.ui?.alerts?.dismissAlert;
+    const AlertModal = bunny?.ui?.components?.wrappers?.AlertModal;
+    const AlertActionButton = bunny?.ui?.components?.wrappers?.AlertActionButton;
+
+    // Fallback if bunny UI alerts aren't present
+    if (!openAlert || !AlertModal || !AlertActionButton) {
+      executeClear("all");
       return;
     }
 
-    const { FluxDispatcher } = getStores();
-    const targetChannels = getUnreadChannels();
-
-    if (targetChannels.length === 0) {
-      showToast("No unread notifications!", getAssetIDByName("Small"));
-      return;
-    }
-
-    lastUsed = now;
-
-    FluxDispatcher.dispatch({
-      type: "BULK_ACK",
-      context: "APP",
-      channels: targetChannels
-    });
-
-    showToast(`Cleared ${targetChannels.length} notifications!`, getAssetIDByName("Check"));
+    openAlert(
+      ALERT_KEY,
+      React.createElement(AlertModal, {
+        title: "👁️ Read All Options",
+        content: "Choose what you want to mark as read:",
+        actions: React.createElement(
+          React.Fragment,
+          null,
+          React.createElement(AlertActionButton, {
+            text: "Mark All Read",
+            variant: "primary",
+            onPress: () => {
+              dismissAlert(ALERT_KEY);
+              executeClear("all");
+            }
+          }),
+          React.createElement(AlertActionButton, {
+            text: "Servers Only",
+            variant: "secondary",
+            onPress: () => {
+              dismissAlert(ALERT_KEY);
+              executeClear("servers");
+            }
+          }),
+          React.createElement(AlertActionButton, {
+            text: "DMs Only",
+            variant: "secondary",
+            onPress: () => {
+              dismissAlert(ALERT_KEY);
+              executeClear("dms");
+            }
+          }),
+          React.createElement(AlertActionButton, {
+            text: "Cancel",
+            variant: "cancel",
+            onPress: () => dismissAlert(ALERT_KEY)
+          })
+        )
+      })
+    );
   };
 
   return (
     <View style={st.row}>
-      <Pressable onPress={handlePress} accessibilityRole="button" accessibilityLabel="Mark All as Read">
+      <Pressable onPress={handlePress} accessibilityRole="button" accessibilityLabel="Read All Options">
         <View style={st.tile}>
           <View style={st.circleBg}>
             <Image
