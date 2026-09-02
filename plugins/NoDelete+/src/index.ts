@@ -19,19 +19,19 @@ const patches: (() => void)[] = [];
 const deletedCache = new Map<string, any>();
 const editMap = new Map<string, string[]>();
 const commandMap = new Map<string, string>();
+const nonceCache = new Set<string>();
 
 storage.ignore ??= {
   users: [],
   bots: false,
   ownMessages: false,
+  botEdits: false,
+  ownEdits: false,
 };
 
 const DELETED_TEXT = "This message was deleted";
 
-function buildAutomodMessage(
-  text: string,
-  timestamp: string
-): string {
+function buildAutomodMessage(text: string, timestamp: string): string {
   return `${text} (${timestamp})`;
 }
 
@@ -51,9 +51,7 @@ function cloneSnapshot(msg: any) {
       ? JSON.parse(JSON.stringify(msg.attachments))
       : [],
     flags: msg.flags || 0,
-    deletedAt:
-      msg.deletedAt ||
-      moment().format("HH:mm:ss"),
+    deletedAt: msg.deletedAt || moment().format("HH:mm:ss"),
   };
 }
 
@@ -61,616 +59,302 @@ export default {
   onLoad() {
     try {
       MessageStore = findByStoreName("MessageStore");
-
       AuthStore =
-        findByStoreName("AuthenticationStore") ||
-        findByProps("getToken");
-
-      patches.push(
-        patchAfter(
-          "getMessage",
-          MessageStore,
-          (args, result) => {
-            const [_channelId, id] = args;
-
-            if (!result || result.embeds?.length) {
-              return result;
-            }
-
-            const cached = deletedCache.get(id);
-
-            if (cached?.embeds?.length) {
-              result.embeds = cached.embeds;
-            }
-
-            return result;
-          }
-        )
-      );
+        findByStoreName("AuthenticationStore") || findByProps("getToken");
 
       const getCurrentUserId = () =>
         AuthStore?.getCurrentUser?.()?.id ||
         AuthStore?.getId?.() ||
         MessageStore?.getCurrentUser?.()?.id;
 
+      // Preserve deleted embeds in MessageStore
       patches.push(
-        patchBefore(
-          "dispatch",
-          FluxDispatcher,
-          (args) => {
-            const event = args[0];
+        patchAfter("getMessage", MessageStore, (args, result) => {
+          const [_channelId, id] = args;
+          if (!result || result.embeds?.length) return result;
 
-            if (!event?.type) return;
-
-            if (event.type !== "MESSAGE_CREATE") {
-              return;
-            }
-
-            const msg = event.message;
-
-            if (!msg?.channel_id) {
-              return;
-            }
-
-            const currentUserId =
-              getCurrentUserId();
-
-            if (
-              msg.author?.id === currentUserId
-            ) {
-              return;
-            }
-
-            if (msg.nonce) {
-              const existing =
-                MessageStore?.getMessage(
-                  msg.channel_id,
-                  msg.nonce
-                );
-
-              if (
-                existing &&
-                existing.id !== msg.id
-              ) {
-                if (
-                  !deletedCache.has(existing.id)
-                ) {
-                  deletedCache.set(
-                    existing.id,
-                    cloneSnapshot(existing)
-                  );
-                }
-
-                delete msg.nonce;
-              }
-            }
-
-            const interactionId =
-              msg.interaction_metadata?.id ||
-              msg.interaction?.id;
-
-            if (interactionId) {
-              commandMap.set(
-                String(interactionId),
-                String(msg.id)
-              );
-
-              if (commandMap.size > 1000) {
-                const firstKey =
-                  commandMap.keys().next().value;
-
-                if (firstKey) {
-                  commandMap.delete(firstKey);
-                }
-              }
-            }
-
-            const referencedInteractionId =
-              msg.referenced_message
-                ?.interaction_metadata?.id ||
-              msg.referenced_message
-                ?.interaction?.id;
-
-            if (referencedInteractionId) {
-              commandMap.set(
-                String(referencedInteractionId),
-                String(msg.id)
-              );
-            }
+          const cached = deletedCache.get(id);
+          if (cached?.embeds?.length) {
+            result.embeds = cached.embeds;
           }
-        )
+          return result;
+        })
       );
 
+      // MESSAGE_CREATE: Double-dispatch / Nonce Bypass Detection
       patches.push(
-        patchBefore(
-          "dispatch",
-          FluxDispatcher,
-          (args) => {
-            const event = args[0];
+        patchBefore("dispatch", FluxDispatcher, (args) => {
+          const event = args[0];
+          if (!event?.type || event.type !== "MESSAGE_CREATE") return;
 
-            if (!event?.type) return;
+          const msg = event.message;
+          if (!msg?.channel_id) return;
 
-            if (
-              event.type ===
-              "MESSAGE_DELETE"
-            ) {
-              const {
-                channelId,
-                id,
-                mlDeleted,
-              } = event;
+          const currentUserId = getCurrentUserId();
 
-              if (!id || !channelId) {
-                return;
+          // Message & Command Nonce Detection
+          const nonce = msg.nonce;
+          if (nonce) {
+            // Check if this nonce was already processed (Double-send / plugin bypass attempt)
+            if (nonceCache.has(nonce)) {
+              const existing = MessageStore?.getMessage(msg.channel_id, nonce);
+              if (existing && !deletedCache.has(existing.id)) {
+                deletedCache.set(existing.id, cloneSnapshot(existing));
               }
-
-              const existing =
-                MessageStore?.getMessage(
-                  channelId,
-                  id
-                );
-
-              if (
-                existing &&
-                !deletedCache.has(id)
-              ) {
-                deletedCache.set(
-                  id,
-                  cloneSnapshot(existing)
-                );
+              delete msg.nonce; // Strip duplicate nonce to prevent overwrite
+            } else {
+              nonceCache.add(nonce);
+              if (nonceCache.size > 500) {
+                const first = nonceCache.values().next().value;
+                if (first) nonceCache.delete(first);
               }
+            }
 
-              if (mlDeleted) {
-                delete event.mlDeleted;
+            // Existing message overwrite check
+            const existing = MessageStore?.getMessage(msg.channel_id, nonce);
+            if (existing && existing.id !== msg.id) {
+              if (!deletedCache.has(existing.id)) {
+                deletedCache.set(existing.id, cloneSnapshot(existing));
               }
+              delete msg.nonce;
             }
           }
-        )
+
+          // Command / Interaction Nonce Mapping
+          const interactionId =
+            msg.interaction_metadata?.id ||
+            msg.interaction?.id ||
+            msg.nonce;
+
+          if (interactionId) {
+            commandMap.set(String(interactionId), String(msg.id));
+            if (commandMap.size > 1000) {
+              const firstKey = commandMap.keys().next().value;
+              if (firstKey) commandMap.delete(firstKey);
+            }
+          }
+
+          const referencedInteractionId =
+            msg.referenced_message?.interaction_metadata?.id ||
+            msg.referenced_message?.interaction?.id;
+
+          if (referencedInteractionId) {
+            commandMap.set(String(referencedInteractionId), String(msg.id));
+          }
+        })
       );
 
+      // Pre-cache before MESSAGE_DELETE
       patches.push(
-        patchBefore(
-          "dispatch",
-          FluxDispatcher,
-          (args) => {
-            const event = args[0];
+        patchBefore("dispatch", FluxDispatcher, (args) => {
+          const event = args[0];
+          if (!event?.type || event.type !== "MESSAGE_DELETE") return;
 
-            if (
-              event?.type !==
-              "MESSAGE_DELETE"
-            ) {
-              return;
-            }
+          const { channelId, id, mlDeleted } = event;
+          if (!id || !channelId) return;
 
-            if (
-              !event?.id ||
-              !event?.channelId
-            ) {
-              return;
-            }
+          const existing = MessageStore?.getMessage(channelId, id);
+          if (existing && !deletedCache.has(id)) {
+            deletedCache.set(id, cloneSnapshot(existing));
+          }
 
-            const currentUserId =
-              getCurrentUserId();
+          if (mlDeleted) delete event.mlDeleted;
+        })
+      );
 
+      // Single MESSAGE_DELETE Handler
+      patches.push(
+        patchBefore("dispatch", FluxDispatcher, (args) => {
+          const event = args[0];
+          if (event?.type !== "MESSAGE_DELETE") return;
+          if (!event?.id || !event?.channelId) return;
+
+          const currentUserId = getCurrentUserId();
+          const cachedMsg =
+            MessageStore?.getMessage(event.channelId, event.id) ||
+            deletedCache.get(event.id);
+
+          if (!cachedMsg) return;
+
+          // Deletion Ignored Filters
+          if (storage.ignore?.users?.includes(cachedMsg.author?.id)) return;
+          if (storage.ignore?.bots && cachedMsg.author?.bot) return;
+          if (
+            storage.ignore?.ownMessages &&
+            cachedMsg.author?.id === currentUserId
+          )
+            return;
+
+          if (!deletedCache.has(event.id)) {
+            deletedCache.set(event.id, cloneSnapshot(cachedMsg));
+          }
+
+          const snapshot = deletedCache.get(event.id);
+          addEmbedLogEntry(snapshotForLog(snapshot, "deleted"));
+
+          const time = snapshot?.deletedAt || moment().format("HH:mm:ss");
+          const automodMessage = buildAutomodMessage(DELETED_TEXT, time);
+
+          args[0] = {
+            type: "MESSAGE_EDIT_FAILED_AUTOMOD",
+            messageData: {
+              type: 1,
+              message: {
+                ...snapshot,
+                channelId: event.channelId,
+                messageId: event.id,
+                content: snapshot?.content || "",
+                embeds: snapshot?.embeds || [],
+                components: snapshot?.components || [],
+                attachments: snapshot?.attachments || [],
+                flags: snapshot?.flags || 0,
+              },
+            },
+            errorResponseBody: {
+              code: 200000,
+              message: automodMessage,
+            },
+          };
+        })
+      );
+
+      // MESSAGE_DELETE_BULK Handler
+      patches.push(
+        patchBefore("dispatch", FluxDispatcher, (args) => {
+          const event = args[0];
+          if (event?.type !== "MESSAGE_DELETE_BULK") return;
+          if (!event?.ids?.length || !event?.channelId) return;
+
+          const currentUserId = getCurrentUserId();
+          const time = moment().format("HH:mm:ss");
+          const automodMessage = buildAutomodMessage(DELETED_TEXT, time);
+
+          let validCount = 0;
+
+          for (const id of event.ids) {
             const cachedMsg =
-              MessageStore?.getMessage(
-                event.channelId,
-                event.id
-              ) ||
-              deletedCache.get(
-                event.id
-              );
+              MessageStore?.getMessage(event.channelId, id) ||
+              deletedCache.get(id);
 
-            if (!cachedMsg) {
-              return;
-            }
-
-            if (
-              storage.ignore?.users?.includes(
-                cachedMsg.author?.id
-              )
-            ) {
-              return;
-            }
-
-            if (
-              storage.ignore?.bots &&
-              cachedMsg.author?.bot
-            ) {
-              return;
-            }
-
+            if (!cachedMsg) continue;
+            if (storage.ignore?.users?.includes(cachedMsg.author?.id)) continue;
+            if (storage.ignore?.bots && cachedMsg.author?.bot) continue;
             if (
               storage.ignore?.ownMessages &&
-              cachedMsg.author?.id ===
-                currentUserId
-            ) {
-              return;
-            }
+              cachedMsg.author?.id === currentUserId
+            )
+              continue;
 
-            if (
-              !deletedCache.has(
-                event.id
-              )
-            ) {
+            if (!deletedCache.has(id)) {
               deletedCache.set(
-                event.id,
-                cloneSnapshot(cachedMsg)
+                id,
+                cloneSnapshot({
+                  ...cachedMsg,
+                  deletedAt: time,
+                })
               );
             }
 
-            const snapshot =
-              deletedCache.get(
-                event.id
-              );
+            const snapshot = deletedCache.get(id);
+            addEmbedLogEntry(snapshotForLog(snapshot, "deleted"));
+            validCount++;
 
-            addEmbedLogEntry(
-              snapshotForLog(
-                snapshot,
-                "deleted"
-              )
-            );
-
-            const time =
-              snapshot?.deletedAt ||
-              moment().format("HH:mm:ss");
-
-            const automodMessage =
-              buildAutomodMessage(
-                DELETED_TEXT,
-                time
-              );
-
-            args[0] = {
-              type:
-                "MESSAGE_EDIT_FAILED_AUTOMOD",
-
+            FluxDispatcher.dispatch({
+              type: "MESSAGE_EDIT_FAILED_AUTOMOD",
               messageData: {
                 type: 1,
-
                 message: {
                   ...snapshot,
-                  channelId:
-                    event.channelId,
-                  messageId:
-                    event.id,
-                  content:
-                    snapshot?.content ||
-                    "",
-                  embeds:
-                    snapshot?.embeds ||
-                    [],
-                  components:
-                    snapshot?.components ||
-                    [],
-                  attachments:
-                    snapshot?.attachments ||
-                    [],
-                  flags:
-                    snapshot?.flags ||
-                    0,
+                  channelId: event.channelId,
+                  messageId: id,
+                  content: snapshot?.content || "",
+                  embeds: snapshot?.embeds || [],
+                  components: snapshot?.components || [],
+                  attachments: snapshot?.attachments || [],
+                  flags: snapshot?.flags || 0,
                 },
               },
-
               errorResponseBody: {
                 code: 200000,
-                message:
-                  automodMessage,
+                message: automodMessage,
               },
-            };
+            });
           }
-        )
-      );
 
-      patches.push(
-        patchBefore(
-          "dispatch",
-          FluxDispatcher,
-          (args) => {
-            const event = args[0];
-
-            if (
-              event?.type !==
-              "MESSAGE_DELETE_BULK"
-            ) {
-              return;
-            }
-
-            if (
-              !event?.ids?.length ||
-              !event?.channelId
-            ) {
-              return;
-            }
-
-            const currentUserId =
-              getCurrentUserId();
-
-            const time =
-              moment().format("HH:mm:ss");
-
-            const automodMessage =
-              buildAutomodMessage(
-                DELETED_TEXT,
-                time
-              );
-
-            let validCount = 0;
-
-            for (
-              const id of event.ids
-            ) {
-              const cachedMsg =
-                MessageStore?.getMessage(
-                  event.channelId,
-                  id
-                ) ||
-                deletedCache.get(id);
-
-              if (!cachedMsg) {
-                continue;
-              }
-
-              if (
-                storage.ignore?.users?.includes(
-                  cachedMsg.author?.id
-                )
-              ) {
-                continue;
-              }
-
-              if (
-                storage.ignore?.bots &&
-                cachedMsg.author?.bot
-              ) {
-                continue;
-              }
-
-              if (
-                storage.ignore?.ownMessages &&
-                cachedMsg.author?.id ===
-                  currentUserId
-              ) {
-                continue;
-              }
-
-              if (
-                !deletedCache.has(id)
-              ) {
-                deletedCache.set(
-                  id,
-                  cloneSnapshot({
-                    ...cachedMsg,
-                    deletedAt: time,
-                  })
-                );
-              }
-
-              const snapshot =
-                deletedCache.get(id);
-
-              addEmbedLogEntry(
-                snapshotForLog(
-                  snapshot,
-                  "deleted"
-                )
-              );
-
-              validCount++;
-
-              FluxDispatcher.dispatch({
-                type:
-                  "MESSAGE_EDIT_FAILED_AUTOMOD",
-
-                messageData: {
-                  type: 1,
-
-                  message: {
-                    ...snapshot,
-                    channelId:
-                      event.channelId,
-                    messageId: id,
-                    content:
-                      snapshot?.content ||
-                      "",
-                    embeds:
-                      snapshot?.embeds ||
-                      [],
-                    components:
-                      snapshot?.components ||
-                      [],
-                    attachments:
-                      snapshot?.attachments ||
-                      [],
-                    flags:
-                      snapshot?.flags ||
-                      0,
-                  },
-                },
-
-                errorResponseBody: {
-                  code: 200000,
-                  message:
-                    automodMessage,
-                },
-              });
-            }
-
-            if (validCount > 0) {
-              args[0] = {
-                type: "NOOP",
-              };
-            }
+          if (validCount > 0) {
+            args[0] = { type: "NOOP" };
           }
-        )
+        })
       );
 
+      // MESSAGE_UPDATE Handler (Includes Edit Settings Filters)
       patches.push(
-        patchBefore(
-          "dispatch",
-          FluxDispatcher,
-          (args) => {
-            const event = args[0];
+        patchBefore("dispatch", FluxDispatcher, (args) => {
+          const event = args[0];
+          if (event?.type !== "MESSAGE_UPDATE") return;
 
-            if (
-              event?.type !==
-              "MESSAGE_UPDATE"
-            ) {
-              return;
-            }
+          const newMsg = event.message;
+          if (!newMsg?.id || !newMsg?.channel_id) return;
 
-            if (!event?.message) {
-              return;
-            }
+          if (!storage.logEdits) return;
 
-            const newMsg =
-              event.message;
+          const currentUserId = getCurrentUserId();
 
-            if (
-              !newMsg.id ||
-              !newMsg.channel_id
-            ) {
-              return;
-            }
+          // General Ignored Users Filter
+          if (storage.ignore?.users?.includes(newMsg.author?.id)) return;
 
-            const currentUserId =
-              getCurrentUserId();
+          // Bot Edits Filter (storage.ignore.botEdits)
+          if (storage.ignore?.botEdits && newMsg.author?.bot) return;
 
-            if (
-              storage.ignore?.users?.includes(
-                newMsg.author?.id
-              )
-            ) {
-              return;
-            }
-
-            if (
-              storage.ignore?.bots &&
-              newMsg.author?.bot
-            ) {
-              return;
-            }
-
-            if (
-              storage.ignore?.ownMessages &&
-              newMsg.author?.id ===
-                currentUserId
-            ) {
-              return;
-            }
-
-            const oldMsg =
-              MessageStore?.getMessage(
-                newMsg.channel_id,
-                newMsg.id
-              ) ||
-              deletedCache.get(
-                newMsg.id
-              );
-
-            if (
-              oldMsg &&
-              oldMsg.embeds?.length &&
-              !newMsg.embeds?.length
-            ) {
-              newMsg.embeds =
-                JSON.parse(
-                  JSON.stringify(
-                    oldMsg.embeds
-                  )
-                );
-            }
-
-            if (
-              oldMsg &&
-              oldMsg.components?.length &&
-              !newMsg.components?.length
-            ) {
-              newMsg.components =
-                JSON.parse(
-                  JSON.stringify(
-                    oldMsg.components
-                  )
-                );
-            }
-
-            if (
-              !newMsg.content ||
-              newMsg.content.trim() === ""
-            ) {
-              return;
-            }
-
-            if (
-              !oldMsg ||
-              !oldMsg.content ||
-              oldMsg.content ===
-                newMsg.content
-            ) {
-              return;
-            }
-
-            let history =
-              editMap.get(
-                newMsg.id
-              ) || [];
-
-            if (
-              history.length === 0 ||
-              history[
-                history.length - 1
-              ] !== oldMsg.content
-            ) {
-              history.push(
-                oldMsg.content
-              );
-            }
-
-            if (
-              history.length > 5
-            ) {
-              history =
-                history.slice(-5);
-            }
-
-            editMap.set(
-              newMsg.id,
-              history
-            );
-
-            addEmbedLogEntry(
-              snapshotForLog(
-                newMsg,
-                "edited",
-                newMsg.content
-              )
-            );
+          // Own Edits Filter (storage.ignore.ownEdits)
+          if (
+            storage.ignore?.ownEdits &&
+            newMsg.author?.id === currentUserId
+          ) {
+            return;
           }
-        )
+
+          const oldMsg =
+            MessageStore?.getMessage(newMsg.channel_id, newMsg.id) ||
+            deletedCache.get(newMsg.id);
+
+          // Preserve embeds and components if cleared in update
+          if (oldMsg && oldMsg.embeds?.length && !newMsg.embeds?.length) {
+            newMsg.embeds = JSON.parse(JSON.stringify(oldMsg.embeds));
+          }
+          if (oldMsg && oldMsg.components?.length && !newMsg.components?.length) {
+            newMsg.components = JSON.parse(JSON.stringify(oldMsg.components));
+          }
+
+          if (!newMsg.content || newMsg.content.trim() === "") return;
+          if (!oldMsg || !oldMsg.content || oldMsg.content === newMsg.content)
+            return;
+
+          let history = editMap.get(newMsg.id) || [];
+          if (
+            history.length === 0 ||
+            history[history.length - 1] !== oldMsg.content
+          ) {
+            history.push(oldMsg.content);
+          }
+
+          if (history.length > 5) {
+            history = history.slice(-5);
+          }
+
+          editMap.set(newMsg.id, history);
+
+          addEmbedLogEntry(snapshotForLog(newMsg, "edited", newMsg.content));
+        })
       );
 
-      patches.push(
-        patchEditStyling(editMap)
-      );
+      patches.push(patchEditStyling(editMap));
+      patches.push(patchContextMenu());
 
-      patches.push(
-        patchContextMenu()
-      );
-
-      showToast(
-        "Message Logger loaded",
-        getAssetIDByName("Check")
-      );
+      showToast("Message Logger loaded", getAssetIDByName("Check"));
     } catch (e) {
-      console.error(
-        "[MessageLogger] Load error:",
-        e
-      );
-
-      showToast(
-        "Failed to load Message Logger",
-        getAssetIDByName("Small")
-      );
+      console.error("[MessageLogger] Load error:", e);
+      showToast("Failed to load Message Logger", getAssetIDByName("Small"));
     }
   },
 
@@ -682,15 +366,12 @@ export default {
     }
 
     patches.length = 0;
-
     deletedCache.clear();
     editMap.clear();
     commandMap.clear();
+    nonceCache.clear();
 
-    showToast(
-      "Message Logger unloaded",
-      getAssetIDByName("Check")
-    );
+    showToast("Message Logger unloaded", getAssetIDByName("Check"));
   },
 
   settings: Settings,
