@@ -1,6 +1,7 @@
 import { React, ReactNative as RN } from "@vendetta/metro/common";
 import { findByProps, findByStoreName } from "@vendetta/metro";
 import { showToast } from "@vendetta/ui/toasts";
+import { Forms, Button } from "@vendetta/ui/components";
 import { getAssetIDByName } from "@vendetta/ui/assets";
 import { isServerExcluded, isDMExcluded } from "./Settings";
 
@@ -43,7 +44,6 @@ const getUnreadChannels = (mode: "all" | "servers" | "dms") => {
 
   const channels: Array<any> = [];
 
-  // 1. Gather Guild Channels
   if ((mode === "all" || mode === "servers") && GuildStore) {
     const guilds = GuildStore.getGuilds();
     Object.values(guilds).forEach((guild: any) => {
@@ -72,7 +72,6 @@ const getUnreadChannels = (mode: "all" | "servers" | "dms") => {
     });
   }
 
-  // 2. Gather DM Channels
   if (mode === "all" || mode === "dms") {
     const dmChannels = getDMChannels(ChannelStore, GuildChannelStore);
     dmChannels.forEach((channel: any) => {
@@ -117,10 +116,8 @@ export default function ReadButton() {
     const openAlert = bunny?.ui?.alerts?.openAlert;
     const dismissAlert = bunny?.ui?.alerts?.dismissAlert;
     const AlertModal = bunny?.ui?.components?.wrappers?.AlertModal;
-    const AlertActionButton = bunny?.ui?.components?.wrappers?.AlertActionButton;
 
-    // Fallback if bunny UI alerts aren't present
-    if (!openAlert || !AlertModal || !AlertActionButton) {
+    if (!openAlert || !AlertModal) {
       executeClear("all");
       return;
     }
@@ -131,35 +128,39 @@ export default function ReadButton() {
         title: "👁️ Read All Options",
         content: "Choose what you want to mark as read:",
         actions: React.createElement(
-          React.Fragment,
-          null,
-          React.createElement(AlertActionButton, {
+          View,
+          { style: { gap: 8, width: "100%", paddingTop: 8 } },
+          React.createElement(Button, {
             text: "Mark All Read",
-            variant: "primary",
+            color: "brand",
+            size: "small",
             onPress: () => {
               dismissAlert(ALERT_KEY);
               executeClear("all");
             }
           }),
-          React.createElement(AlertActionButton, {
+          React.createElement(Button, {
             text: "Servers Only",
-            variant: "secondary",
+            color: "grey",
+            size: "small",
             onPress: () => {
               dismissAlert(ALERT_KEY);
               executeClear("servers");
             }
           }),
-          React.createElement(AlertActionButton, {
+          React.createElement(Button, {
             text: "DMs Only",
-            variant: "secondary",
+            color: "grey",
+            size: "small",
             onPress: () => {
               dismissAlert(ALERT_KEY);
               executeClear("dms");
             }
           }),
-          React.createElement(AlertActionButton, {
+          React.createElement(Button, {
             text: "Cancel",
-            variant: "cancel",
+            color: "red",
+            size: "small",
             onPress: () => dismissAlert(ALERT_KEY)
           })
         )
