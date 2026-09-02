@@ -1,10 +1,11 @@
-import { React } from "@vendetta/metro/common";
-import { View, Pressable, StyleSheet } from "react-native";
+
+import { React, ReactNative } from "@vendetta/metro/common";
 import { findByProps, findByStoreName } from "@vendetta/metro";
 import { showToast } from "@vendetta/ui/toasts";
 import { getAssetIDByName } from "@vendetta/ui/assets";
 import { isServerExcluded, isDMExcluded } from "./Settings";
 
+const { View, Pressable, StyleSheet } = ReactNative;
 const Haptic = findByProps("triggerHapticFeedback", "HapticFeedbackTypes");
 const CheckIcon = findByProps("CheckmarkIcon")?.CheckmarkIcon || findByProps("CheckIcon")?.CheckIcon;
 
