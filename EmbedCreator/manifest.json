@@ -1,6 +1,6 @@
 {
-  "name": "ValidUser",
-  "description": "Fixes unresolved user mentions like @unknown-user to a normal clickable mention.",
+  "name": "EmbedCreator",
+  "description": "create embeds using /embed-create .",
   "authors": [
     {
       "name": "fshin",
