@@ -21,28 +21,24 @@ const MentionIcon = getAssetIDByName("ic_mention_24px") ??
     getAssetIDByName("mention");
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 const MENTION_REGEX = /<@!?(\d{17,19})>/g;
 
-// Calculates the exact 0-5 avatar index using Discord's snowflake formula
-function getDefaultAvatarIndex(userId?: string): number {
-    if (!userId) return 0;
-    try {
-        return Number((BigInt(userId) >> 22n) % 6n);
-    } catch {
-        return 0;
-    }
-}
-
-// Maps the snowflake index to default_avatar_0 through default_avatar_5 (and _small variants)
-function getDefaultAvatarAsset(userId?: string, small = false): number {
-    const index = getDefaultAvatarIndex(userId);
-    const suffix = small ? "_small" : "";
-
-    return getAssetIDByName(`default_avatar_${index}${suffix}`) ??
-           getAssetIDByName(`default_avatar_${index}`) ??
-           getAssetIDByName("default_avatar_0") ??
-           getAssetIDByName("default_avatar_0_small");
+function createDeletedUserPayload(userId: string) {
+    return {
+        id: userId,
+        username: "Deleted User",
+        global_name: null,
+        globalName: null,
+        discriminator: "0000",
+        avatar: null,
+        avatarDecorationData: null,
+        bot: false,
+        system: false,
+        flags: 0,
+        publicFlags: 0,
+        public_flags: 0,
+        guildMemberAvatars: {},
+    };
 }
 
 function extractIdsFromText(text: string): string[] {
@@ -77,12 +73,8 @@ function extractAllMentionIds(message: any): string[] {
 
     if (message.embeds && Array.isArray(message.embeds)) {
         for (const embed of message.embeds) {
-            if (embed.rawTitle) {
-                ids.push(...extractIdsFromText(embed.rawTitle));
-            }
-            if (embed.rawDescription) {
-                ids.push(...extractIdsFromText(embed.rawDescription));
-            }
+            if (embed.rawTitle) ids.push(...extractIdsFromText(embed.rawTitle));
+            if (embed.rawDescription) ids.push(...extractIdsFromText(embed.rawDescription));
             if (embed.fields && Array.isArray(embed.fields)) {
                 for (const field of embed.fields) {
                     if (field.rawName) ids.push(...extractIdsFromText(field.rawName));
@@ -100,23 +92,11 @@ function extractAllMentionIds(message: any): string[] {
         for (const snapshot of message.messageSnapshots) {
             const snap = snapshot.message;
             if (snap) {
-                if (snap.content) {
-                    ids.push(...extractIdsFromText(snap.content));
-                }
+                if (snap.content) ids.push(...extractIdsFromText(snap.content));
                 if (snap.embeds && Array.isArray(snap.embeds)) {
                     for (const embed of snap.embeds) {
-                        if (embed.rawTitle) {
-                            ids.push(...extractIdsFromText(embed.rawTitle));
-                        }
-                        if (embed.rawDescription) {
-                            ids.push(...extractIdsFromText(embed.rawDescription));
-                        }
-                        if (embed.fields && Array.isArray(embed.fields)) {
-                            for (const field of embed.fields) {
-                                if (field.rawName) ids.push(...extractIdsFromText(field.rawName));
-                                if (field.rawValue) ids.push(...extractIdsFromText(field.rawValue));
-                            }
-                        }
+                        if (embed.rawTitle) ids.push(...extractIdsFromText(embed.rawTitle));
+                        if (embed.rawDescription) ids.push(...extractIdsFromText(embed.rawDescription));
                     }
                 }
                 if (Array.isArray(snap.components)) {
@@ -131,25 +111,6 @@ function extractAllMentionIds(message: any): string[] {
 
 function isUserCached(userId: string): boolean {
     return !!UserStore?.getUser?.(userId);
-}
-
-function createDeletedUserPayload(userId: string) {
-    return {
-        id: userId,
-        username: "Deleted User",
-        global_name: null,
-        globalName: null,
-        discriminator: "0000",
-        avatar: null,
-        avatarDecorationData: null,
-        bot: false,
-        system: false,
-        flags: 0,
-        publicFlags: 0,
-        public_flags: 0,
-        guildMemberAvatars: {},
-        defaultAvatarIndex: getDefaultAvatarIndex(userId)
-    };
 }
 
 function cloneComponents(components: any[]): any[] {
@@ -337,40 +298,38 @@ async function fetchUsersViaGateway(userIds: string[]): Promise<boolean> {
 }
 
 async function fetchUser(userId: string) {
+    if (isUserCached(userId)) return;
+
     if (typeof UserUtils?.fetchUser === "function") {
         try {
-            return await UserUtils.fetchUser(userId);
+            await UserUtils.fetchUser(userId);
+            return;
         } catch (e) {
-            logger.warn(`[ValidUser] UserUtils.fetchUser failed for ${userId}, trying REST fallback:`, e);
+            logger.warn(`[ValidUser] UserUtils.fetchUser failed for ${userId}:`, e);
         }
     }
 
     try {
         const res = await RestAPI.get({ url: `/users/${userId}` });
-        if (res.body) {
-            const normalizedUser = {
-                ...res.body,
-                discriminator: res.body.discriminator ?? "0",
-                bot: !!res.body.bot,
-                avatar: res.body.avatar ?? null,
-            };
-
+        if (res.status === 200 && res.body) {
             Dispatcher.dispatch({
                 type: "USER_UPDATE",
-                user: normalizedUser
+                user: res.body
             });
-            return normalizedUser.username;
+            return;
         }
-    } catch (err) {
-        logger.warn(`[ValidUser] User ${userId} non-existent or deleted. Dispatching Deleted User payload...`);
-        Dispatcher.dispatch({
-            type: "USER_UPDATE",
-            user: createDeletedUserPayload(userId)
-        });
-        return "Deleted User";
+    } catch (err: any) {
+        // Verified: Only mark as Deleted User on 404 / 10013 Unknown User response
+        if (err?.status === 404 || err?.body?.code === 10013) {
+            logger.warn(`[ValidUser] User ${userId} is confirmed deleted (404/10013).`);
+            Dispatcher.dispatch({
+                type: "USER_UPDATE",
+                user: createDeletedUserPayload(userId)
+            });
+        } else {
+            logger.error(`[ValidUser] Network/rate limit error for ${userId}:`, err);
+        }
     }
-
-    throw new Error("Empty API response body");
 }
 
 async function fixUnknownMentions(message: any) {
@@ -391,15 +350,11 @@ async function fixUnknownMentions(message: any) {
         }
 
         if (!success) {
-            const safetyDelay = uncachedIds.length > 10 ? 900 : 250;
+            const safetyDelay = uncachedIds.length > 10 ? 800 : 200;
 
             for (let i = 0; i < uncachedIds.length; i++) {
                 const userId = uncachedIds[i];
-                try {
-                    await fetchUser(userId);
-                } catch (err) {
-                    logger.error(`[ValidUser] Fetch Failed for ${userId}:`, err);
-                }
+                await fetchUser(userId);
                 if (i < uncachedIds.length - 1) {
                     await sleep(safetyDelay);
                 }
@@ -408,17 +363,6 @@ async function fixUnknownMentions(message: any) {
     }
 
     await sleep(200);
-
-    // Final safety check for missing accounts
-    const stillUncached = ids.filter(id => !isUserCached(id));
-    if (stillUncached.length > 0) {
-        for (const missingId of stillUncached) {
-            Dispatcher.dispatch({
-                type: "USER_UPDATE",
-                user: createDeletedUserPayload(missingId)
-            });
-        }
-    }
 
     if (channelId && messageId) {
         await forceUIRefresh(channelId, message);
@@ -429,19 +373,22 @@ let unpatches: (() => void)[] = [];
 
 export default {
     onLoad() {
-        // Safe interceptor for getDefaultAvatarURL returning the computed asset ID
+        // Safe Avatar interceptor: Runs native resolution using safe fallback object on error
         if (AvatarUtils?.getDefaultAvatarURL) {
             unpatches.push(
                 instead("getDefaultAvatarURL", AvatarUtils, (args, orig) => {
                     const [user] = args;
-                    if (!user || !user.id || typeof user.id !== "string") {
-                        return getDefaultAvatarAsset(user?.id);
+
+                    if (!user) {
+                        return orig(createDeletedUserPayload("0"));
                     }
+
                     try {
                         return orig(...args);
                     } catch (err) {
-                        logger.warn("[ValidUser] Safe catch in getDefaultAvatarURL:", err);
-                        return getDefaultAvatarAsset(user.id);
+                        logger.warn("[ValidUser] getDefaultAvatarURL throw intercepted:", err);
+                        const fallbackId = typeof user === "string" ? user : (user.id ?? "0");
+                        return orig(createDeletedUserPayload(fallbackId));
                     }
                 })
             );
@@ -464,9 +411,7 @@ export default {
                         (c: any) => Array.isArray(c) && c[0]?.type?.name === "ActionSheetRowGroup"
                     );
 
-                    if (!groups?.length) {
-                        return;
-                    }
+                    if (!groups?.length) return;
 
                     const fixButton = React.createElement(ActionSheetRow, {
                         label: ids.length === 1 ? "Fix 1 @Mention" : `Fix ${ids.length} @Mentions`,
@@ -501,7 +446,7 @@ export default {
                     }
                 });
             }).catch((err: any) => {
-                logger.error("[ValidUser] Failed to resolve action sheet component:", err);
+                logger.error("[ValidUser] Action sheet component patch failed:", err);
             });
         });
 
