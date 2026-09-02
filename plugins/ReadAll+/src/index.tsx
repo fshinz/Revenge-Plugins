@@ -1,20 +1,11 @@
 import { after } from "@vendetta/patcher";
-import { React } from "@vendetta/metro/common";
-import { View } from "react-native";
-import { Forms } from "@vendetta/ui/components";
-import { showToast } from "@vendetta/ui/toasts";
-import { getAssetIDByName } from "@vendetta/ui/assets";
+import { React, ReactNative } from "@vendetta/metro/common";
 import ReadButton from "./ReadButton";
-import { 
-  addServerException, 
-  removeServerException, 
-  addDMException, 
-  removeDMException, 
-  clearAllExceptions, 
-  getAllExceptions 
-} from "./Settings";
+import Settings from "./Settings";
 
-const TAG = "[ReadAckButton]";
+const { View } = ReactNative;
+
+const TAG = "[ReadAll+]";
 const TILE = 48;
 const MARGIN = 4;
 
@@ -75,98 +66,6 @@ function scanRegistry(): number {
   return patchedCount;
 }
 
-const SettingsComponent = () => {
-  const [serverInput, setServerInput] = React.useState("");
-  const [dmInput, setDMInput] = React.useState("");
-  const [exceptions, setExceptions] = React.useState(getAllExceptions());
-
-  const refreshExceptions = () => setExceptions(getAllExceptions());
-
-  const handleAddServer = () => {
-    if (serverInput.trim() && addServerException(serverInput.trim())) {
-      showToast("Added server exception", getAssetIDByName("ic_check"));
-      setServerInput("");
-      refreshExceptions();
-    }
-  };
-
-  const handleAddDM = () => {
-    if (dmInput.trim() && addDMException(dmInput.trim())) {
-      showToast("Added DM exception", getAssetIDByName("ic_check"));
-      setDMInput("");
-      refreshExceptions();
-    }
-  };
-
-  return (
-    <React.Fragment>
-      <Forms.FormSection title="Server Exceptions">
-        <Forms.FormInput
-          placeholder="Enter server ID"
-          value={serverInput}
-          onChange={setServerInput}
-          onSubmitEditing={handleAddServer}
-        />
-        <Forms.FormRow label="Add Server" onPress={handleAddServer} />
-        {exceptions.servers.map((server) => (
-          <Forms.FormRow
-            key={server.id}
-            label={server.name}
-            subLabel={server.id}
-            trailing={
-              <Forms.FormRow
-                label="Remove"
-                style={{ color: "#ff4757" }}
-                onPress={() => {
-                  removeServerException(server.id);
-                  refreshExceptions();
-                }}
-              />
-            }
-          />
-        ))}
-      </Forms.FormSection>
-
-      <Forms.FormSection title="DM Exceptions">
-        <Forms.FormInput
-          placeholder="Enter channel ID"
-          value={dmInput}
-          onChange={setDMInput}
-          onSubmitEditing={handleAddDM}
-        />
-        <Forms.FormRow label="Add DM" onPress={handleAddDM} />
-        {exceptions.dms.map((dm) => (
-          <Forms.FormRow
-            key={dm.id}
-            label={dm.name}
-            subLabel={dm.id}
-            trailing={
-              <Forms.FormRow
-                label="Remove"
-                style={{ color: "#ff4757" }}
-                onPress={() => {
-                  removeDMException(dm.id);
-                  refreshExceptions();
-                }}
-              />
-            }
-          />
-        ))}
-      </Forms.FormSection>
-
-      <Forms.FormSection title="Actions">
-        <Forms.FormRow
-          label="Clear All Exceptions"
-          onPress={() => {
-            clearAllExceptions();
-            refreshExceptions();
-          }}
-        />
-      </Forms.FormSection>
-    </React.Fragment>
-  );
-};
-
 export default {
   onLoad() {
     const count = scanRegistry();
@@ -190,5 +89,5 @@ export default {
     unpatchers = [];
   },
 
-  settings: SettingsComponent
+  settings: Settings
 };
