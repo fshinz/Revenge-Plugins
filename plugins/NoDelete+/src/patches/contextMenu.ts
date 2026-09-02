@@ -1,94 +1,70 @@
 import { after } from "@vendetta/patcher";
-import { findByProps, findByName } from "@vendetta/metro";
+import { findByName } from "@vendetta/metro";
 import { storage } from "@vendetta/plugin";
+import { findInReactTree } from "@vendetta/utils";
 import { showToast } from "@vendetta/ui/toasts";
 
-// Target standard sheet hooks across different Vendetta/Revenge versions
-const ContextMenuUtils = findByProps("openLazy", "toggleLazy");
+const PROFILE_MENU_NAMES = [
+  "UserProfileOverflowMenu",
+  "BotUserProfileOverflowMenu",
+];
+
+function getMainItems(ret: any): any[] | null {
+  let items = ret?.props?.items;
+  if (Array.isArray(items) && Array.isArray(items[0])) return items[0];
+  items = ret?.props?.children?.props?.items;
+  if (Array.isArray(items) && Array.isArray(items[0])) return items[0];
+  const node = findInReactTree(
+    ret,
+    (n: any) => Array.isArray(n?.props?.items) && Array.isArray(n.props.items[0])
+  );
+  return node?.props.items[0] ?? null;
+}
 
 export function patchContextMenu() {
   const unpatches: (() => void)[] = [];
 
-  // Try patching openLazy menu generation
-  if (ContextMenuUtils?.openLazy) {
+  for (const name of PROFILE_MENU_NAMES) {
+    const mod = findByName(name, false);
+    if (!mod) continue;
+
     unpatches.push(
-      after("openLazy", ContextMenuUtils, (args, res) => {
-        const [componentPromise, menuName] = args;
-        if (!menuName?.includes("User") && !menuName?.includes("Profile")) return;
-
-        componentPromise().then((mod: any) => {
-          if (!mod?.default) return;
-          const target = mod.default;
-
-          const unpatchTarget = after("default", mod, (propsArgs, ret) => {
-            try {
-              const userId = propsArgs[0]?.user?.id || propsArgs[0]?.userId;
-              if (!userId) return;
-
-              const items = 
-                ret?.props?.children?.props?.children ||
-                ret?.props?.children ||
-                ret?.props?.items;
-
-              if (!Array.isArray(items)) return;
-
-              const isIgnored = storage.ignore?.users?.includes(userId);
-
-              items.push({
-                label: isIgnored ? "Unignore User (Logger)" : "Ignore User (Logger)",
-                isDestructive: !isIgnored,
-                action: () => {
-                  storage.ignore ??= { users: [], bots: false, ownMessages: false };
-                  if (isIgnored) {
-                    storage.ignore.users = storage.ignore.users.filter((id: string) => id !== userId);
-                    showToast(`Unignored user`);
-                  } else {
-                    storage.ignore.users.push(userId);
-                    showToast(`Ignoring user messages`);
-                  }
-                },
-              });
-            } catch (e) {
-              console.error("[MessageLogger] Context menu injection error:", e);
-            }
-          });
-          unpatches.push(unpatchTarget);
-        });
-      })
-    );
-  }
-
-  // Fallback direct patch for named sheet modules
-  const ActionSheetModules = ["UserProfileActionSheet", "UserContextMenu"];
-  for (const name of ActionSheetModules) {
-    const mod = findByName(name, false) || findByProps(name);
-    if (mod) {
-      unpatches.push(
-        after(name in mod ? name : "default", mod, (args, ret) => {
-          const userId = args[0]?.user?.id || args[0]?.userId;
+      after("default", mod, (args: any[], ret: any) => {
+        try {
+          const props = args[0] ?? {};
+          const userId = props.user?.id || props.userId;
           if (!userId) return;
 
-          const isIgnored = storage.ignore?.users?.includes(userId);
-          const children = ret?.props?.children?.props?.children || ret?.props?.children;
+          const items = getMainItems(ret);
+          if (!items) return;
 
-          if (Array.isArray(children)) {
-            children.push({
-              label: isIgnored ? "Unignore User (Logger)" : "Ignore User (Logger)",
-              action: () => {
-                storage.ignore ??= { users: [], bots: false, ownMessages: false };
-                if (isIgnored) {
-                  storage.ignore.users = storage.ignore.users.filter((id: string) => id !== userId);
-                  showToast(`Unignored user`);
-                } else {
-                  storage.ignore.users.push(userId);
-                  showToast(`Ignoring user messages`);
-                }
-              },
-            });
-          }
-        })
-      );
-    }
+          // Prevent duplicate actions from being injected
+          if (items.some((item: any) => item?.label?.includes("(Logger)"))) return;
+
+          storage.ignore ??= { users: [], bots: false, ownMessages: false };
+          const isIgnored = storage.ignore.users.includes(userId);
+
+          items.push({
+            label: isIgnored ? "Unignore User (Logger)" : "Ignore User (Logger)",
+            isDestructive: !isIgnored,
+            action: () => {
+              storage.ignore ??= { users: [], bots: false, ownMessages: false };
+              if (isIgnored) {
+                storage.ignore.users = storage.ignore.users.filter(
+                  (id: string) => id !== userId
+                );
+                showToast("Unignored user messages");
+              } else {
+                storage.ignore.users.push(userId);
+                showToast("Ignoring user messages");
+              }
+            },
+          });
+        } catch (e) {
+          console.error("[MessageLogger] Context menu injection error:", e);
+        }
+      })
+    );
   }
 
   return () => {
