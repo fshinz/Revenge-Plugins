@@ -1,4 +1,4 @@
-import { React } from "@vendetta/metro/common";
+import { React, ReactNative as RN } from "@vendetta/metro/common";
 import { findByProps, findByStoreName } from "@vendetta/metro";
 import { storage } from "@vendetta/plugin";
 import { useProxy } from "@vendetta/storage";
@@ -7,26 +7,15 @@ import { showToast } from "@vendetta/ui/toasts";
 import { showConfirmationAlert } from "@vendetta/ui/alerts";
 import { Forms } from "@vendetta/ui/components";
 
-const { FormText, FormRow, FormSwitchRow, FormSection } = Forms;
-
-// Safe Metro resolvers with native Vendetta fallbacks
-const TableRowGroupModule = findByProps("TableRowGroup") || findByProps("TableGroup");
-const TableRowGroupComponent = TableRowGroupModule?.TableRowGroup || TableRowGroupModule?.TableGroup || FormSection;
-
-const TableSwitchRowComponent =
-  findByProps("TableSwitchRow")?.TableSwitchRow ||
-  findByProps("TableRowExtra")?.TableSwitchRow ||
-  FormSwitchRow;
-
-const StackComponent =
-  findByProps("Stack")?.Stack ||
-  findByProps("TableRowGroup", "Stack")?.Stack ||
-  (({ children }: any) => children);
-
-const ScrollViewComponent =
-  findByProps("ScrollView")?.ScrollView ||
-  findByProps("TableScrollView")?.ScrollView ||
-  require("react-native").ScrollView;
+const { ScrollView } = findByProps("ScrollView");
+const { TableRowGroup, TableSwitchRow, TableRow, Stack } = findByProps(
+  "TableSwitchRow",
+  "TableCheckboxRow",
+  "TableRowGroup",
+  "Stack",
+  "TableRow"
+);
+const { FormText } = Forms;
 
 let UserStore: any;
 
@@ -34,45 +23,66 @@ export default function Settings() {
   UserStore ??= findByStoreName("UserStore");
   useProxy(storage);
 
-  storage.ignore ??= { users: [], bots: false, ownMessages: false };
-  
-  // Destructure useState safely from metro common React
-  const [users, setUsers] = React.useState<string[]>(storage.ignore.users || []);
-
-  const handleRemoveUser = (userId: string) => {
-    const newArr = users.filter((id: string) => id !== userId);
-    storage.ignore.users = newArr;
-    setUsers(newArr);
-    showToast("User removed from ignore list", getAssetIDByName("Check"));
+  // Storage initialization
+  storage.ignore ??= {
+    users: [],
+    bots: false,
+    ownMessages: false,
+    botEdits: false,
+    ownEdits: false,
   };
+  storage.logEdits ??= true;
+  storage.showToast ??= false;
+
+  const users: string[] = storage.ignore.users || [];
 
   const handleClearUsers = () => {
     if (users.length === 0) return;
     showConfirmationAlert({
       title: "Clear Ignored Users",
-      content: `Remove all ${users.length} users from ignore list?`,
-      confirmText: "Clear",
+      content: `Remove all ${users.length} users from the ignore list?`,
+      confirmText: "Clear All",
       cancelText: "Cancel",
       onConfirm: () => {
         storage.ignore.users = [];
-        setUsers([]);
         showToast("Cleared all ignored users", getAssetIDByName("Check"));
       },
     });
   };
 
-  const TableRowGroup = TableRowGroupComponent;
-  const TableSwitchRow = TableSwitchRowComponent;
-  const Stack = StackComponent;
-  const ScrollView = ScrollViewComponent;
+  const handleRemoveUser = (id: string) => {
+    storage.ignore.users = users.filter((uId) => uId !== id);
+    showToast("User removed from ignore list", getAssetIDByName("Check"));
+  };
 
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 10 }}>
       <Stack spacing={8}>
-        <TableRowGroup title="Filters">
+        {/* General Settings */}
+        <TableRowGroup title="General Settings">
+          <TableSwitchRow
+            label="Log Edited Messages"
+            subLabel="Track edit history and original message content"
+            value={!!storage.logEdits}
+            onValueChange={(v: boolean) => {
+              storage.logEdits = v;
+            }}
+          />
+          <TableSwitchRow
+            label="Show Load Toast"
+            subLabel="Display a toast notification when plugin is loaded"
+            value={!!storage.showToast}
+            onValueChange={(v: boolean) => {
+              storage.showToast = v;
+            }}
+          />
+        </TableRowGroup>
+
+        {/* Message Deletion Filters */}
+        <TableRowGroup title="Deletion Filters">
           <TableSwitchRow
             label="Ignore Bots"
-            subLabel="Don't log messages from bots"
+            subLabel="Don't log deleted messages from bots"
             value={!!storage.ignore.bots}
             onValueChange={(v: boolean) => {
               storage.ignore.bots = v;
@@ -80,7 +90,7 @@ export default function Settings() {
           />
           <TableSwitchRow
             label="Ignore My Own Messages"
-            subLabel="Don't log deletions or edits of your own messages"
+            subLabel="Don't log deletions of your own messages"
             value={!!storage.ignore.ownMessages}
             onValueChange={(v: boolean) => {
               storage.ignore.ownMessages = v;
@@ -88,29 +98,62 @@ export default function Settings() {
           />
         </TableRowGroup>
 
-        <TableRowGroup title="Ignored Users">
-          <FormRow
-            label="Clear All"
-            subLabel={`${users.length} users ignored`}
-            trailing={<FormRow.Icon source={getAssetIDByName("ic_trash_24px")} />}
-            onPress={handleClearUsers}
+        {/* Message Edit Filters */}
+        <TableRowGroup title="Edit Filters">
+          <TableSwitchRow
+            label="Log Edited Messages From Bots"
+            subLabel="Track edit history for messages sent by bots"
+            value={!storage.ignore.botEdits}
+            onValueChange={(v: boolean) => {
+              storage.ignore.botEdits = !v;
+            }}
           />
+          <TableSwitchRow
+            label="Log Edited Messages From You"
+            subLabel="Track edit history for your own messages"
+            value={!storage.ignore.ownEdits}
+            onValueChange={(v: boolean) => {
+              storage.ignore.ownEdits = !v;
+            }}
+          />
+        </TableRowGroup>
+
+        {/* Ignored Users Section */}
+        <TableRowGroup title={`Ignored Users (${users.length})`}>
+          {users.length > 0 && (
+            <TableRow
+              label="Clear Ignored List"
+              subLabel="Mass remove all currently ignored users"
+              trailing={
+                <RN.Image
+                  source={getAssetIDByName("TrashIcon")}
+                  style={{ width: 20, height: 20, tintColor: "#ff4d4d" }}
+                />
+              }
+              onPress={handleClearUsers}
+            />
+          )}
 
           {users.length === 0 ? (
-            <FormText style={{ padding: 12 }}>No users ignored.</FormText>
+            <FormText style={{ padding: 16, opacity: 0.6 }}>
+              No users are currently ignored.
+            </FormText>
           ) : (
             users.map((id: string) => {
               const user = UserStore?.getUser(id);
               const name = user?.username ? `@${user.username}` : id;
               return (
-                <FormRow
+                <TableRow
                   key={id}
                   label={name}
+                  subLabel={`ID: ${id}`}
                   trailing={
-                    <FormRow.Icon
-                      source={getAssetIDByName("ic_close_24px")}
-                      onPress={() => handleRemoveUser(id)}
-                    />
+                    <RN.TouchableOpacity onPress={() => handleRemoveUser(id)}>
+                      <RN.Image
+                        source={getAssetIDByName("TrashIcon")}
+                        style={{ width: 20, height: 20, tintColor: "#ff4d4d" }}
+                      />
+                    </RN.TouchableOpacity>
                   }
                 />
               );
