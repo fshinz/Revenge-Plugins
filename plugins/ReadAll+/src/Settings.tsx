@@ -1,11 +1,11 @@
 import { storage } from "@vendetta/plugin";
 import { findByStoreName, findByProps } from "@vendetta/metro";
-import { React } from "@vendetta/metro/common";
+import { React, ReactNative } from "@vendetta/metro/common";
 import { Forms } from "@vendetta/ui/components";
 import { showToast } from "@vendetta/ui/toasts";
 import { getAssetIDByName } from "@vendetta/ui/assets";
-import { View, ScrollView } from "react-native";
 
+const { ScrollView } = ReactNative;
 const FormIcon = findByProps("FormIcon")?.FormIcon || Forms.FormIcon;
 
 interface ExceptionSettings {
@@ -219,4 +219,3 @@ export default function Settings() {
     </ScrollView>
   );
 }
-
