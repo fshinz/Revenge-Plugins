@@ -1,6 +1,6 @@
 {
   "name": "NoDelete+",
-  "description": "a modified version of \"NoDelete\"",
+  "description": "a modified version of \"NoDelete and antied\"",
   "authors": [
     {
       "name": "fshin",
@@ -9,6 +9,10 @@
     {
       "name": "meqativ",
       "id": "744276454946242723"
+    },
+    {
+      "name": "angelw0lf",
+      "id": "692632336961110087"
     }
   ],
   "main": "index.js",
