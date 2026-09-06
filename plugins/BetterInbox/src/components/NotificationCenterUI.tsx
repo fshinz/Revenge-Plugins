@@ -1,9 +1,10 @@
 import { React, ReactNative, NavigationNative, FluxDispatcher } from "@vendetta/metro/common";
-import { findByProps, findByDisplayName, findByName } from "@vendetta/metro";
+import { findByProps, findByDisplayName } from "@vendetta/metro";
+import { resolveSemanticColor } from "@vendetta/ui/colors";
 import { getNotifications, subscribeToNotifications, clearNotifications } from "../notifications";
 import type { MentionSubCategory, NotificationCategory, NotificationItem } from "../types";
 
-const { View, Text, TouchableOpacity, ScrollView, Image, StyleSheet } = ReactNative;
+const { View, Text, TouchableOpacity, ScrollView, Image, StyleSheet, FlatList } = ReactNative;
 const { useState, useMemo, useCallback, useEffect, useReducer, memo } = React;
 
 const Router = findByProps("transitionToGuild", "transitionTo");
@@ -11,13 +12,24 @@ const NativeTabs = findByDisplayName("Tabs");
 const useTabsState = findByProps("useTabsState")?.useTabsState;
 const NativeSegmentedControl = findByDisplayName("SegmentedControl");
 
-const TableRow = findByName("TableRow") || findByProps("TableRow")?.TableRow;
-const TableRowGroup = findByProps("TableRowGroup")?.TableRowGroup || View;
+// Dynamic Theme & Color Lookup
+const ColorModule = findByProps("semanticColors", "rawColors") || findByProps("ThemeColorMap");
+const semanticColors = ColorModule?.semanticColors ?? {};
 
-// Profile action module verified via in-app eval
-const UserProfileActions = findByProps("openUserProfileModal") 
-  || findByProps("showUserProfile") 
-  || findByProps("openUserProfile");
+const getColor = (semanticKey: string, fallback: string) => {
+  try {
+    if (semanticColors[semanticKey]) {
+      return resolveSemanticColor(semanticColors[semanticKey]) || fallback;
+    }
+  } catch {}
+  return fallback;
+};
+
+// Profile action module
+const UserProfileActions =
+  findByProps("openUserProfileModal") ||
+  findByProps("showUserProfile") ||
+  findByProps("openUserProfile");
 
 function categoryLabel(cat: NotificationCategory): string {
   if (cat === "friend_request") return "Friends";
@@ -45,19 +57,37 @@ function getAvatarUrl(author: any): string {
   }
 }
 
-const NotificationRow = memo(({ item, onPress }: { item: NotificationItem; onPress: () => void }) => {
-  const subLabelText = item.guildName || item.channelName 
-    ? `${item.guildName} • ${item.channelName}\n${item.content || ""}`.trim()
-    : item.content;
+// Visual Card Component
+const NotificationCard = memo(({ item, onPress }: { item: NotificationItem; onPress: () => void }) => {
+  const location = item.guildName
+    ? `${item.guildName} • ${item.channelName}`
+    : item.channelName;
 
   return (
-    <TableRow
-      label={item.title}
-      subLabel={subLabelText}
-      trailing={<Text style={styles.timestampText}>{item.timestamp}</Text>}
-      icon={<Image source={{ uri: getAvatarUrl(item.author) }} style={styles.avatarImage} />}
-      onPress={onPress}
-    />
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.75}>
+      <View style={styles.cardHeader}>
+        <View style={styles.headerLeft}>
+          <Image source={{ uri: getAvatarUrl(item.author) }} style={styles.avatarImage} />
+          <Text style={styles.cardTitle} numberOfLines={1}>
+            {item.title}
+          </Text>
+        </View>
+        <Text style={styles.timestamp}>{item.timestamp}</Text>
+      </View>
+
+      <View style={styles.cardBody}>
+        {Boolean(item.content) && (
+          <Text style={styles.cardContent} numberOfLines={2}>
+            {item.content}
+          </Text>
+        )}
+        {Boolean(location) && (
+          <Text style={styles.location} numberOfLines={1}>
+            {location}
+          </Text>
+        )}
+      </View>
+    </TouchableOpacity>
   );
 });
 
@@ -100,7 +130,6 @@ export default function NotificationCenterUI(): JSX.Element {
       return n.category === currentCategory;
     });
 
-    // Limit to 30 ONLY if viewing the Bot subcategory
     if (currentCategory === "mentions" && currentMentionFilter === "bot") {
       return filtered.slice(0, 30);
     }
@@ -109,7 +138,6 @@ export default function NotificationCenterUI(): JSX.Element {
   }, [notifications, currentCategory, currentMentionFilter]);
 
   const handleNotificationPress = useCallback((item: NotificationItem) => {
-    // Friend requests (or items without channel/guild) open user profile directly
     if ((item.category === "friend_request" || (!item.channelId && !item.guildId)) && item.author?.id) {
       if (UserProfileActions?.openUserProfileModal) {
         UserProfileActions.openUserProfileModal({ userId: item.author.id });
@@ -126,7 +154,6 @@ export default function NotificationCenterUI(): JSX.Element {
       return;
     }
 
-    // Otherwise jump to message location in chat
     if (item.channelId || item.guildId) {
       try {
         if (Router?.transitionToGuild) {
@@ -147,42 +174,37 @@ export default function NotificationCenterUI(): JSX.Element {
   return (
     <View style={styles.container}>
       <View style={styles.headerBar}>
-        <Text style={styles.headerTitle}>Inbox Notifications</Text>
-        <TouchableOpacity 
-          style={styles.clearButton} 
-          onPress={() => clearNotifications(currentCategory)}
-        >
-          <Text style={styles.clearButtonText}>Clear Category</Text>
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Notification Center</Text>
+        {displayedNotifications.length > 0 && (
+          <TouchableOpacity onPress={() => clearNotifications(currentCategory)}>
+            <Text style={styles.clearButtonText}>
+              Clear {categoryLabel(currentCategory)}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
-      {NativeTabs && tabsState ? (
-        <NativeTabs
-          state={{
-            ...tabsState,
-            activeIndex: activeTabIdx,
-            setActiveIndex: (idx: number) => {
-              tabsState.setActiveIndex?.(idx);
-              setActiveTabIdx(idx);
-            },
-          }}
-        />
-      ) : (
-        <View style={styles.tabBar}>
-          {categories.map((tab, idx) => (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.tabButton, activeTabIdx === idx && styles.activeTabButton]}
-              onPress={() => setActiveTabIdx(idx)}
-            >
-              <Text style={[styles.tabText, activeTabIdx === idx && styles.activeTabText]}>
-                {categoryLabel(tab)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
+      {/* Category Navigation Pills / Tabs */}
+      <View style={styles.pillsWrapper}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsContainer}>
+          {categories.map((cat, idx) => {
+            const active = activeTabIdx === idx;
+            return (
+              <TouchableOpacity
+                key={cat}
+                style={[styles.pill, active && styles.activePill]}
+                onPress={() => setActiveTabIdx(idx)}
+              >
+                <Text style={[styles.pillText, active && styles.activePillText]}>
+                  {categoryLabel(cat)}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
 
+      {/* Mention Sub-filters */}
       {currentCategory === "mentions" && (
         <View style={styles.subFilterWrapper}>
           {NativeSegmentedControl ? (
@@ -206,7 +228,9 @@ export default function NotificationCenterUI(): JSX.Element {
                   style={[styles.subFilterButton, mentionFilterIdx === idx && styles.activeSubFilter]}
                   onPress={() => setMentionFilterIdx(idx)}
                 >
-                  <Text style={styles.subFilterText}>{sub.toUpperCase()}</Text>
+                  <Text style={[styles.subFilterText, mentionFilterIdx === idx && styles.activeSubFilterText]}>
+                    {sub.toUpperCase()}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -214,50 +238,162 @@ export default function NotificationCenterUI(): JSX.Element {
         </View>
       )}
 
-      <ScrollView style={styles.feed} removeClippedSubviews>
-        {displayedNotifications.length === 0 ? (
-          <Text style={styles.emptyText}>No notifications found for this category.</Text>
-        ) : (
-          <TableRowGroup title={`RECENT ${categoryLabel(currentCategory).toUpperCase()} (${displayedNotifications.length})`}>
-            {displayedNotifications.map((item) => (
-              <NotificationRow
-                key={item.id}
-                item={item}
-                onPress={() => handleNotificationPress(item)}
-              />
-            ))}
-          </TableRowGroup>
+      {/* Notification List */}
+      <FlatList
+        data={displayedNotifications}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.feed}
+        renderItem={({ item }) => (
+          <NotificationCard item={item} onPress={() => handleNotificationPress(item)} />
         )}
-      </ScrollView>
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No notifications found for this category.</Text>
+          </View>
+        }
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#313338" },
-  headerBar: { 
-    flexDirection: "row", 
-    justifyContent: "space-between", 
-    alignItems: "center", 
-    paddingHorizontal: 16, 
-    paddingVertical: 10, 
-    backgroundColor: "#1e1f22" 
+  container: {
+    flex: 1,
+    backgroundColor: getColor("BACKGROUND_PRIMARY", "#111214"),
   },
-  headerTitle: { color: "#ffffff", fontWeight: "bold", fontSize: 16 },
-  clearButton: { backgroundColor: "#da373c", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 },
-  clearButtonText: { color: "#ffffff", fontWeight: "600", fontSize: 12 },
-  subFilterWrapper: { paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#1e1f22" },
-  tabBar: { flexDirection: "row", backgroundColor: "#2b2d31", paddingVertical: 4 },
-  tabButton: { flex: 1, paddingVertical: 10, alignItems: "center" },
-  activeTabButton: { borderBottomWidth: 2, borderBottomColor: "#5865F2" },
-  tabText: { color: "#949ba4", fontWeight: "600", fontSize: 13 },
-  activeTabText: { color: "#ffffff" },
-  subFilterBar: { flexDirection: "row", justifyContent: "center" },
-  subFilterButton: { marginHorizontal: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  activeSubFilter: { backgroundColor: "#404249" },
-  subFilterText: { color: "#dbdee1", fontSize: 11, fontWeight: "bold" },
-  feed: { flex: 1, paddingHorizontal: 8, paddingVertical: 12 },
-  emptyText: { color: "#949ba4", textAlign: "center", marginTop: 40, fontSize: 14 },
-  avatarImage: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#4e5058" },
-  timestampText: { color: "#949ba4", fontSize: 11, alignSelf: "center" },
+  headerBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  headerTitle: {
+    color: getColor("HEADER_PRIMARY", "#F2F3F5"),
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  clearButtonText: {
+    color: getColor("TEXT_DANGER", "#F23F43"),
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  pillsWrapper: {
+    paddingVertical: 6,
+  },
+  pillsContainer: {
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  pill: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: getColor("BACKGROUND_SECONDARY_ALT", "#2B2D31"),
+  },
+  activePill: {
+    backgroundColor: getColor("BG_BRAND", "#5865F2"),
+  },
+  pillText: {
+    color: getColor("INTERACTIVE_NORMAL", "#949BA4"),
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  activePillText: {
+    color: "#FFFFFF",
+  },
+  subFilterWrapper: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  subFilterBar: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    backgroundColor: getColor("BACKGROUND_SECONDARY_ALT", "#1E1F22"),
+    borderRadius: 8,
+    padding: 3,
+  },
+  subFilterButton: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  activeSubFilter: {
+    backgroundColor: getColor("BACKGROUND_SECONDARY", "#2B2D31"),
+  },
+  subFilterText: {
+    color: getColor("INTERACTIVE_MUTED", "#949BA4"),
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  activeSubFilterText: {
+    color: getColor("HEADER_PRIMARY", "#FFFFFF"),
+  },
+  feed: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  card: {
+    backgroundColor: getColor("BACKGROUND_SECONDARY", "#1E1F22"),
+    borderRadius: 12,
+    marginVertical: 4,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: getColor("BACKGROUND_MODIFIER_ACCENT", "rgba(255, 255, 255, 0.1)"),
+  },
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: getColor("BACKGROUND_SECONDARY_ALT", "#2B2D31"),
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    marginRight: 8,
+  },
+  avatarImage: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    marginRight: 8,
+    backgroundColor: "#4e5058",
+  },
+  cardTitle: {
+    color: getColor("HEADER_PRIMARY", "#FFFFFF"),
+    fontSize: 13,
+    fontWeight: "700",
+    flex: 1,
+  },
+  timestamp: {
+    color: getColor("TEXT_MUTED", "#B5BAC1"),
+    fontSize: 11,
+  },
+  cardBody: {
+    padding: 12,
+  },
+  cardContent: {
+    color: getColor("TEXT_NORMAL", "#DBDEE1"),
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 4,
+  },
+  location: {
+    color: getColor("TEXT_MUTED", "#B5BAC1"),
+    fontSize: 11,
+    fontWeight: "500",
+  },
+  emptyContainer: {
+    padding: 40,
+    alignItems: "center",
+  },
+  emptyText: {
+    color: getColor("TEXT_MUTED", "#B5BAC1"),
+    fontSize: 14,
+  },
 });
