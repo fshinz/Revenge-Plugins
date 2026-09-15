@@ -3,8 +3,16 @@
   "description": "Fixes unresolved user mentions like @unknown-user to a normal clickable mention.",
   "authors": [
     {
-      "name": "fshin, o.oer",
+      "name": "fshin",
       "id": "1381008677301129257"
+    },
+    {
+      "name": "o.oer",
+      "id": "306810730055729152"
+    },
+    {
+      "name": "kmmiio99o.dev",
+      "id": "879393496627306587"
     }
   ],
   "main": "index.js",
