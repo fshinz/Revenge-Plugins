@@ -17,14 +17,10 @@ let memoryNotifications: NotificationItem[] = [];
 const lastActivitySignature = new Map<string, string>();
 const listeners = new Set<() => void>();
 
-let saveTimeout: any = null;
-
-function syncStorageDebounced() {
-  if (saveTimeout) clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(() => {
-    // Save up to 500 total stored notifications
-    storage.notifications = memoryNotifications.slice(0, 500);
-  }, 1000);
+function syncStorage() {
+  // Keep at most 500 items. The storage proxy writes on assignment, so saving
+  // directly beats a debounce that could die with the app before firing.
+  storage.notifications = memoryNotifications.slice(0, 500);
 }
 
 export function subscribeToNotifications(listener: () => void): () => void {
@@ -42,13 +38,13 @@ export function clearNotifications(category?: string) {
   } else {
     memoryNotifications = memoryNotifications.filter((n) => n.category !== category);
   }
-  syncStorageDebounced();
+  syncStorage();
   listeners.forEach((l) => l());
 }
 
 export function deleteNotification(id: string) {
   memoryNotifications = memoryNotifications.filter((n) => n.id !== id);
-  syncStorageDebounced();
+  syncStorage();
   listeners.forEach((l) => l());
 }
 
@@ -56,7 +52,7 @@ function pushNotification(item: NotificationItem) {
   if (memoryNotifications.some((n) => n.id === item.id)) return;
 
   memoryNotifications = [item, ...memoryNotifications].slice(0, 500);
-  syncStorageDebounced();
+  syncStorage();
   listeners.forEach((l) => l());
 }
 
@@ -327,7 +323,6 @@ export function setInboxTracking(enabled: boolean) {
     FluxDispatcher.unsubscribe("THREAD_MEMBERS_UPDATE", handleThreadMembersUpdate);
     FluxDispatcher.unsubscribe("PRESENCE_UPDATES", handlePresenceUpdates);
 
-    if (saveTimeout) clearTimeout(saveTimeout);
     storage.notifications = memoryNotifications.slice(0, 500);
     lastActivitySignature.clear();
   }

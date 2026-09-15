@@ -373,22 +373,30 @@ let unpatches: (() => void)[] = [];
 
 export default {
     onLoad() {
-        // Safe Avatar interceptor: Runs native resolution using safe fallback object on error
+        // Safe Avatar interceptor.
+        // Native signature is getDefaultAvatarURL(id, discriminator, isProvisional, size).
+        // Never feed a user object into it: Integer(id).shiftRight(22) throws a
+        // TypeError ("shiftRight is not a function") because parseValue returns
+        // non-string/number/bigint inputs as-is. Discord calls this with
+        // (undefined, undefined) whenever a user has no custom avatar, so passing
+        // a user object here crashes the app.
         if (AvatarUtils?.getDefaultAvatarURL) {
             unpatches.push(
                 instead("getDefaultAvatarURL", AvatarUtils, (args, orig) => {
-                    const [user] = args;
-
-                    if (!user) {
-                        return orig(createDeletedUserPayload("0"));
-                    }
-
                     try {
-                        return orig(...args);
+                        const [id] = args;
+
+                        if (typeof id === "string" || typeof id === "number" || id == null) {
+                            return orig(...args);
+                        }
+
+                        return orig(
+                            String(id.id ?? "0"),
+                            typeof id.discriminator === "string" ? id.discriminator : "0000"
+                        );
                     } catch (err) {
                         logger.warn("[ValidUser] getDefaultAvatarURL throw intercepted:", err);
-                        const fallbackId = typeof user === "string" ? user : (user.id ?? "0");
-                        return orig(createDeletedUserPayload(fallbackId));
+                        return orig("0", "0000");
                     }
                 })
             );
