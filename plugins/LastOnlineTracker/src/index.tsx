@@ -6,14 +6,13 @@ import { useProxy } from "@vendetta/storage";
 
 // UI Components via findByProps
 const { ScrollView } = findByProps("ScrollView");
-const { TableRowGroup, TableSwitchRow, TableRow, Stack } = findByProps(
+const { TableRowGroup, TableRadioGroup, TableRadioRow, TableSwitchRow, Stack } = findByProps(
+  "TableRadioGroup",
+  "TableRadioRow",
   "TableSwitchRow",
-  "TableCheckboxRow",
   "TableRowGroup",
-  "Stack",
-  "TableRow"
+  "Stack"
 );
-const TableRadioRow = findByProps("TableRadioRow")?.TableRadioRow;
 const FormText = findByProps("FormText")?.FormText || findByProps("Text")?.Text;
 
 // --- Storage Setup ---
@@ -113,67 +112,48 @@ const LABELS = ["Active", "Last seen", "Online", "Seen"];
 
 function Settings() {
   useProxy(storage);
-  const [, forceUpdate] = React.useReducer((x) => x + 1, 0);
-
-  React.useEffect(() => {
-    const id = setInterval(forceUpdate, 1000);
-    return () => clearInterval(id);
-  }, []);
+  const selectedLabel = storage.settings.label || "Active";
+  const selectedFormat = storage.settings.timeFormat || "relative";
 
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 10 }}>
-      <Stack spacing={8}>
-        {/* Label Options */}
-        <TableRowGroup title="Label">
-          {LABELS.map((v) =>
-            TableRadioRow ? (
-              <TableRadioRow
-                key={v}
-                label={v}
-                selected={storage.settings.label === v}
-                onPress={() => (storage.settings.label = v)}
-              />
-            ) : (
-              <TableRow
-                key={v}
-                label={v}
-                trailing={storage.settings.label === v ? <Text>✓</Text> : null}
-                onPress={() => (storage.settings.label = v)}
-              />
-            )
-          )}
-        </TableRowGroup>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }}>
+      <Stack spacing={16}>
+        {/* Label Radio Options */}
+        <TableRadioGroup
+          title="Label"
+          value={selectedLabel}
+          onChange={(val: string) => (storage.settings.label = val)}
+        >
+          {LABELS.map((v) => (
+            <TableRadioRow
+              key={v}
+              label={v}
+              value={v}
+              selected={selectedLabel === v}
+              onPress={() => (storage.settings.label = v)}
+            />
+          ))}
+        </TableRadioGroup>
 
-        {/* Time Format */}
-        <TableRowGroup title="Time format">
-          {TableRadioRow ? (
-            <>
-              <TableRadioRow
-                label="Relative (5m ago)"
-                selected={storage.settings.timeFormat === "relative"}
-                onPress={() => (storage.settings.timeFormat = "relative")}
-              />
-              <TableRadioRow
-                label="Exact (2:34 PM)"
-                selected={storage.settings.timeFormat === "exact"}
-                onPress={() => (storage.settings.timeFormat = "exact")}
-              />
-            </>
-          ) : (
-            <>
-              <TableRow
-                label="Relative (5m ago)"
-                trailing={storage.settings.timeFormat === "relative" ? <Text>✓</Text> : null}
-                onPress={() => (storage.settings.timeFormat = "relative")}
-              />
-              <TableRow
-                label="Exact (2:34 PM)"
-                trailing={storage.settings.timeFormat === "exact" ? <Text>✓</Text> : null}
-                onPress={() => (storage.settings.timeFormat = "exact")}
-              />
-            </>
-          )}
-        </TableRowGroup>
+        {/* Time Format Radio Options */}
+        <TableRadioGroup
+          title="Time format"
+          value={selectedFormat}
+          onChange={(val: string) => (storage.settings.timeFormat = val)}
+        >
+          <TableRadioRow
+            label="Relative (5m ago)"
+            value="relative"
+            selected={selectedFormat === "relative"}
+            onPress={() => (storage.settings.timeFormat = "relative")}
+          />
+          <TableRadioRow
+            label="Exact (2:34 PM)"
+            value="exact"
+            selected={selectedFormat === "exact"}
+            onPress={() => (storage.settings.timeFormat = "exact")}
+          />
+        </TableRadioGroup>
 
         {/* Display Switches */}
         <TableRowGroup title="Where to show it">
