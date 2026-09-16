@@ -1,0 +1,14 @@
+{
+    "name": "LastOnlineTracker",
+    "description": "Shows 'Active X ago' under usernames in the member list, DM list, and DM header once they go offline.",
+    "authors": [
+        {
+            "name": "fshin",
+            "id": "1381008677301129257"
+        }
+    ],
+    "main": "src/index.tsx",
+    "vendetta": {
+        "icon": "EmojiFaceWithSpiralEyesIcon"
+    }
+}
