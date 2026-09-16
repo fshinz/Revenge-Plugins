@@ -1,26 +1,36 @@
 import { React, ReactNative as RN } from "@vendetta/metro/common";
 import { findByProps, findByStoreName } from "@vendetta/metro";
-import { patcher, storage } from "@vendetta";
+import { patcher } from "@vendetta";
+import { storage } from "@vendetta/plugin";
 import { useProxy } from "@vendetta/storage";
-import { Forms } from "@vendetta/ui/components";
+
+// UI Components via findByProps
+const { ScrollView } = findByProps("ScrollView");
+const { TableRowGroup, TableSwitchRow, TableRow, Stack } = findByProps(
+  "TableSwitchRow",
+  "TableCheckboxRow",
+  "TableRowGroup",
+  "Stack",
+  "TableRow"
+);
+const TableRadioRow = findByProps("TableRadioRow")?.TableRadioRow;
+const FormText = findByProps("FormText")?.FormText || findByProps("Text")?.Text;
 
 // --- Storage Setup ---
-if (!storage.settings) {
-  storage.settings = {
-    label: "Active",
-    timeFormat: "relative",
-    persist: true,
-    dmList: true,
-    memberList: true,
-    header: true,
-  };
-}
-if (!storage.lastSeen) storage.lastSeen = {};
+storage.settings ??= {
+  label: "Active",
+  timeFormat: "relative",
+  persist: true,
+  dmList: true,
+  memberList: true,
+  header: true,
+};
+storage.lastSeen ??= {};
 
 const MAX_TRACKED = 500;
 const lastSeen = new Map<string, number>();
 
-// Hydrate lastSeen map from storage if persistence is enabled
+// Hydration
 if (storage.settings.persist && storage.lastSeen) {
   for (const [id, ts] of Object.entries(storage.lastSeen)) {
     if (typeof ts === "number" && ts > 0) lastSeen.set(id, ts);
@@ -98,10 +108,6 @@ const startPresence = () => {
   unsubPresence = () => FluxDispatcher?.unsubscribe?.("PRESENCE_UPDATES", handlePresenceUpdate);
 };
 
-// --- UI Helpers ---
-const renderText = (children: string) =>
-  Text ? React.createElement(Text, { variant: "text-xs/medium", color: "text-muted" }, children) : null;
-
 // --- Settings Component ---
 const LABELS = ["Active", "Last seen", "Online", "Seen"];
 
@@ -114,77 +120,108 @@ function Settings() {
     return () => clearInterval(id);
   }, []);
 
-  const { FormSection, FormRadioRow, FormSwitchRow, FormText } = Forms;
-
   return (
-    <RN.ScrollView style={{ flex: 1, padding: 10 }}>
-      <FormSection title="Label">
-        {LABELS.map((v) => (
-          <FormRadioRow
-            key={v}
-            label={v}
-            selected={storage.settings.label === v}
-            onPress={() => (storage.settings.label = v)}
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 10 }}>
+      <Stack spacing={8}>
+        {/* Label Options */}
+        <TableRowGroup title="Label">
+          {LABELS.map((v) =>
+            TableRadioRow ? (
+              <TableRadioRow
+                key={v}
+                label={v}
+                selected={storage.settings.label === v}
+                onPress={() => (storage.settings.label = v)}
+              />
+            ) : (
+              <TableRow
+                key={v}
+                label={v}
+                trailing={storage.settings.label === v ? <Text>✓</Text> : null}
+                onPress={() => (storage.settings.label = v)}
+              />
+            )
+          )}
+        </TableRowGroup>
+
+        {/* Time Format */}
+        <TableRowGroup title="Time format">
+          {TableRadioRow ? (
+            <>
+              <TableRadioRow
+                label="Relative (5m ago)"
+                selected={storage.settings.timeFormat === "relative"}
+                onPress={() => (storage.settings.timeFormat = "relative")}
+              />
+              <TableRadioRow
+                label="Exact (2:34 PM)"
+                selected={storage.settings.timeFormat === "exact"}
+                onPress={() => (storage.settings.timeFormat = "exact")}
+              />
+            </>
+          ) : (
+            <>
+              <TableRow
+                label="Relative (5m ago)"
+                trailing={storage.settings.timeFormat === "relative" ? <Text>✓</Text> : null}
+                onPress={() => (storage.settings.timeFormat = "relative")}
+              />
+              <TableRow
+                label="Exact (2:34 PM)"
+                trailing={storage.settings.timeFormat === "exact" ? <Text>✓</Text> : null}
+                onPress={() => (storage.settings.timeFormat = "exact")}
+              />
+            </>
+          )}
+        </TableRowGroup>
+
+        {/* Display Switches */}
+        <TableRowGroup title="Where to show it">
+          {FormText && (
+            <FormText style={{ paddingHorizontal: 12, paddingBottom: 4, opacity: 0.6, fontSize: 12 }}>
+              Control where last-seen status indicators render across mobile UI surfaces.
+            </FormText>
+          )}
+          <TableSwitchRow
+            label="DM list"
+            subLabel="Can look inconsistent or flicker in the DM list if your message previews are set to All."
+            value={!!storage.settings.dmList}
+            onValueChange={(v: boolean) => (storage.settings.dmList = v)}
           />
-        ))}
-      </FormSection>
+          <TableSwitchRow
+            label="Member list"
+            subLabel="Server and DM member lists both"
+            value={!!storage.settings.memberList}
+            onValueChange={(v: boolean) => (storage.settings.memberList = v)}
+          />
+          <TableSwitchRow
+            label="DM header"
+            value={!!storage.settings.header}
+            onValueChange={(v: boolean) => (storage.settings.header = v)}
+          />
+        </TableRowGroup>
 
-      <FormSection title="Time Format">
-        <FormRadioRow
-          label="Relative (5m ago)"
-          selected={storage.settings.timeFormat === "relative"}
-          onPress={() => (storage.settings.timeFormat = "relative")}
-        />
-        <FormRadioRow
-          label="Exact (2:34 PM)"
-          selected={storage.settings.timeFormat === "exact"}
-          onPress={() => (storage.settings.timeFormat = "exact")}
-        />
-      </FormSection>
-
-      <FormSection title="Where to Show">
-        <FormText type="description" style={{ marginBottom: 8 }}>
-          Control where last-seen status indicators should render.
-        </FormText>
-        <FormSwitchRow
-          label="DM list"
-          subLabel="Shows last active timestamp inside direct message rows."
-          value={storage.settings.dmList}
-          onValueChange={(v: boolean) => (storage.settings.dmList = v)}
-        />
-        <FormSwitchRow
-          label="Member list"
-          subLabel="Shows in server and group member list cards."
-          value={storage.settings.memberList}
-          onValueChange={(v: boolean) => (storage.settings.memberList = v)}
-        />
-        <FormSwitchRow
-          label="DM header"
-          subLabel="Shows in the active channel header."
-          value={storage.settings.header}
-          onValueChange={(v: boolean) => (storage.settings.header = v)}
-        />
-      </FormSection>
-
-      <FormSection title="Persistence">
-        <FormSwitchRow
-          label="Save last-seen across restarts"
-          subLabel="Retains captured last-seen timestamps in local storage."
-          value={storage.settings.persist}
-          onValueChange={(v: boolean) => {
-            storage.settings.persist = v;
-            if (!v) {
-              lastSeen.clear();
-              storage.lastSeen = {};
-            }
-          }}
-        />
-      </FormSection>
-    </RN.ScrollView>
+        {/* Persistence Options */}
+        <TableRowGroup title="Persistence">
+          <TableSwitchRow
+            label="Save last-seen across restarts"
+            subLabel="A saved time only updates the next time that person goes offline again - can look outdated meanwhile."
+            value={!!storage.settings.persist}
+            onValueChange={(v: boolean) => {
+              storage.settings.persist = v;
+              if (!v) {
+                lastSeen.clear();
+                storage.lastSeen = {};
+              }
+            }}
+          />
+        </TableRowGroup>
+      </Stack>
+    </ScrollView>
   );
 }
 
-// --- Main Plugin Object ---
+// --- Plugin Implementation ---
 const unpatches: Array<() => void> = [];
 
 export default {
@@ -192,7 +229,10 @@ export default {
     try {
       startPresence();
 
-      // 1. Patch ActivityStatus component (for Member List & Headers)
+      const renderText = (children: string) =>
+        Text ? React.createElement(Text, { variant: "text-xs/medium", color: "text-muted" }, children) : null;
+
+      // 1. ActivityStatus Patch
       const ActivityStatusModule = findByProps("ActivityStatus") || findByProps("renderActivityStatus");
       const ActivityTarget = ActivityStatusModule?.ActivityStatus ? ActivityStatusModule : findByProps("default");
 
@@ -217,7 +257,7 @@ export default {
         );
       }
 
-      // 2. Patch DM List items (MessagesItemChannelContent)
+      // 2. DM List Patch
       const DMChannelContent = findByProps("MessagesItemChannelContent") || findByProps("ChannelItemRow");
       if (DMChannelContent) {
         const targetKey = DMChannelContent.MessagesItemChannelContent ? "MessagesItemChannelContent" : "default";
