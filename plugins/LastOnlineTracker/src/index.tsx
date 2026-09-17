@@ -16,16 +16,16 @@ export default {
         storage.profileUsername ??= true;
         storage.lastOnlineData ??= {};
 
-        // 1. Updated DM Header Patch (Targeting Mobile Header directly)
+        // 1. Updated DM Header Patch
         const Header = findByName("Header") || findByProps("Header")?.Header;
         if (Header) {
-            unpatches.push(patcher.after("default", Header, (_, res) => {
+            const funcName = typeof Header === "function" ? "render" : "default";
+            unpatches.push(patcher.after(funcName in Header ? funcName : (typeof Header === "function" ? Header : "default"), Header, (_, res) => {
                 if (!storage.dmTopBar) return;
 
                 const userId = findInReactTree(res, c => c?.props?.user?.id)?.props?.user?.id;
                 if (!userId) return;
 
-                // Locate title container or sub-header area
                 const titleContainer = findInReactTree(res, c => c?.props?.children && Array.isArray(c.props.children));
                 if (titleContainer && !findInReactTree(res, c => c?.key === "LastOnline-DMHeader")) {
                     titleContainer.props.children.push(
@@ -35,10 +35,10 @@ export default {
             }));
         }
 
-        // Fallback for ChannelHeader / PrivateChannelHeader layouts
         const ChannelHeader = findByName("ChannelHeader", false);
         if (ChannelHeader) {
-            unpatches.push(patcher.after("default", ChannelHeader, (_, res) => {
+            const funcName = typeof ChannelHeader === "function" ? ChannelHeader : (ChannelHeader.default ? "default" : "type");
+            unpatches.push(patcher.after(funcName, ChannelHeader, (_, res) => {
                 if (!storage.dmTopBar) return;
                 const userId = findInReactTree(res, m => m?.props?.user?.id)?.props?.user?.id;
                 if (!userId) return;
@@ -58,11 +58,13 @@ export default {
             unpatches.push(patcher.after("type", UserProfileContent, (_, res) => {
                 if (!storage.profileUsername) return;
                 let primaryInfo = findInReactTree(res, c => c?.type?.name === "PrimaryInfo");
+                if (!primaryInfo) return;
                 
                 patcher.after("type", primaryInfo, (_, primaryRes) => {
                     if (primaryRes?.type?.name === "UserProfilePrimaryInfo") {
                         patcher.after("type", primaryRes, (_, primaryInnerRes) => {
                             let displayName = findInReactTree(primaryInnerRes, c => c?.type?.name === "DisplayName");
+                            if (!displayName) return;
                             patcher.after("type", displayName, (args, displayRes) => {
                                 const userId = args[0]?.user?.id;
                                 if (userId && !findInReactTree(displayRes, c => c?.key === "LastOnline-Profile")) {
