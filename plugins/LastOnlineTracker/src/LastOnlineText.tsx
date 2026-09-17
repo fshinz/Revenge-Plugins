@@ -5,60 +5,84 @@ import { useProxy } from "@vendetta/storage";
 
 const { Text } = ReactNative;
 
-function formatTimestamp(timestamp, format) {
+function formatTimestamp(timestamp: number | undefined) {
     if (!timestamp) return null;
-    const date = new Date(timestamp);
 
-    if (format === "exact") {
-        return date.toLocaleString([], {
-            month: "short",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit"
-        });
+    const date = new Date(timestamp);
+    const diffSeconds = Math.floor((Date.now() - timestamp) / 1000);
+
+    if (diffSeconds < 60) {
+        return "Just now";
     }
 
-    // Relative Time
-    const diffSeconds = Math.floor((Date.now() - timestamp) / 1000);
-    if (diffSeconds < 60) return "Just now";
-
     const diffMinutes = Math.floor(diffSeconds / 60);
-    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+
+    if (diffMinutes < 60) {
+        return `${diffMinutes}m ago`;
+    }
 
     const diffHours = Math.floor(diffMinutes / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
+
+    if (diffHours < 24) {
+        return `${diffHours}h ago`;
+    }
 
     const diffDays = Math.floor(diffHours / 24);
-    return `${diffDays}d ago`;
+
+    if (diffDays < 7) {
+        return `${diffDays}d ago`;
+    }
+
+    return date.toLocaleString([], {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+    });
 }
 
-export default function LastSeenText({ userId, style }) {
+export default function LastOnlineText({
+    userId,
+    style
+}: {
+    userId: string;
+    style?: any;
+}) {
     useProxy(storage);
 
     const [timeStr, setTimeStr] = useState(() =>
-        formatTimestamp(
-            storage.lastOnlineData[userId],
-            storage.timeFormat
-        )
+        formatTimestamp(storage.lastOnlineData?.[userId])
     );
 
     useEffect(() => {
-        const interval = setInterval(() => {
+        const update = () => {
             setTimeStr(
                 formatTimestamp(
-                    storage.lastOnlineData[userId],
-                    storage.timeFormat
+                    storage.lastOnlineData?.[userId]
                 )
             );
-        }, 30000);
+        };
+
+        update();
+
+        const interval = setInterval(update, 30000);
 
         return () => clearInterval(interval);
-    }, [userId, storage.timeFormat]);
+    }, [userId]);
 
-    if (!timeStr) return null;
+    if (!timeStr) {
+        return null;
+    }
 
     return (
-        <Text style={[{ color: "#949ba4" }, style]}>
+        <Text
+            style={[
+                {
+                    color: "#949ba4"
+                },
+                style
+            ]}
+        >
             Last seen: {timeStr}
         </Text>
     );
