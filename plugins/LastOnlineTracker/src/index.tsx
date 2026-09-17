@@ -16,28 +16,39 @@ export default {
         storage.profileUsername ??= true;
         storage.lastOnlineData ??= {};
 
-        // 1. DM Header Injection
+        // 1. Updated DM Header Patch (Targeting Mobile Header directly)
+        const Header = findByName("Header") || findByProps("Header")?.Header;
+        if (Header) {
+            unpatches.push(patcher.after("default", Header, (_, res) => {
+                if (!storage.dmTopBar) return;
+
+                const userId = findInReactTree(res, c => c?.props?.user?.id)?.props?.user?.id;
+                if (!userId) return;
+
+                // Locate title container or sub-header area
+                const titleContainer = findInReactTree(res, c => c?.props?.children && Array.isArray(c.props.children));
+                if (titleContainer && !findInReactTree(res, c => c?.key === "LastOnline-DMHeader")) {
+                    titleContainer.props.children.push(
+                        <LastOnlineText key="LastOnline-DMHeader" userId={userId} />
+                    );
+                }
+            }));
+        }
+
+        // Fallback for ChannelHeader / PrivateChannelHeader layouts
         const ChannelHeader = findByName("ChannelHeader", false);
         if (ChannelHeader) {
             unpatches.push(patcher.after("default", ChannelHeader, (_, res) => {
-                if (!storage.dmTopBar || res?.type?.type?.name !== "PrivateChannelHeader") return;
+                if (!storage.dmTopBar) return;
+                const userId = findInReactTree(res, m => m?.props?.user?.id)?.props?.user?.id;
+                if (!userId) return;
 
-                patcher.after("type", res.type, (_, headerRes) => {
-                    const userId = findInReactTree(headerRes, m => m?.props?.user?.id)?.props?.user?.id;
-                    if (!userId) return;
-
-                    const titleComp = headerRes?.props?.children?.props?.children?.[1];
-                    if (titleComp && typeof titleComp.type === "function") {
-                        const unpatchTitle = patcher.after("type", titleComp, (_, titleRes) => {
-                            unpatchTitle();
-                            if (!findInReactTree(titleRes, c => c?.key === "LastOnline-DMHeader")) {
-                                titleRes.props.children[0].props.children.push(
-                                    <LastOnlineText key="LastOnline-DMHeader" userId={userId} />
-                                );
-                            }
-                        });
-                    }
-                });
+                const targetNode = findInReactTree(res, c => Array.isArray(c?.props?.children));
+                if (targetNode && !findInReactTree(res, c => c?.key === "LastOnline-DMHeader")) {
+                    targetNode.props.children.push(
+                        <LastOnlineText key="LastOnline-DMHeader" userId={userId} />
+                    );
+                }
             }));
         }
 
