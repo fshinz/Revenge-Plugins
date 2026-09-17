@@ -1,4 +1,3 @@
-// --- LastOnlineText.tsx ---
 import React, { useState, useEffect } from "react";
 import { ReactNative } from "@vendetta/metro/common";
 import { storage } from "@vendetta/plugin";
@@ -22,32 +21,39 @@ function formatTimestamp(timestamp, format) {
     // Relative Time
     const diffSeconds = Math.floor((Date.now() - timestamp) / 1000);
     if (diffSeconds < 60) return "Just now";
+
     const diffMinutes = Math.floor(diffSeconds / 60);
     if (diffMinutes < 60) return `${diffMinutes}m ago`;
+
     const diffHours = Math.floor(diffMinutes / 60);
     if (diffHours < 24) return `${diffHours}h ago`;
+
     const diffDays = Math.floor(diffHours / 24);
     return `${diffDays}d ago`;
 }
 
 export default function LastSeenText({ userId, style }) {
     useProxy(storage);
-    
-    // Safely retrieve timestamp from persistent storage
-    const timestamp = storage.lastOnlineData?.[userId];
-    const [timeStr, setTimeStr] = useState(() => formatTimestamp(timestamp, storage.timeFormat));
+
+    const [timeStr, setTimeStr] = useState(() =>
+        formatTimestamp(
+            storage.lastOnlineData[userId],
+            storage.timeFormat
+        )
+    );
 
     useEffect(() => {
-        const updateText = () => {
-            const currentTimestamp = storage.lastOnlineData?.[userId];
-            setTimeStr(formatTimestamp(currentTimestamp, storage.timeFormat));
-        };
-
-        updateText();
-        const interval = setInterval(updateText, 30000);
+        const interval = setInterval(() => {
+            setTimeStr(
+                formatTimestamp(
+                    storage.lastOnlineData[userId],
+                    storage.timeFormat
+                )
+            );
+        }, 30000);
 
         return () => clearInterval(interval);
-    }, [userId, storage.timeFormat, storage.lastOnlineData?.[userId]]);
+    }, [userId, storage.timeFormat]);
 
     if (!timeStr) return null;
 
