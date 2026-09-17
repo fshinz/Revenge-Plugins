@@ -8,33 +8,60 @@ import {
 import { storage } from "@vendetta/plugin";
 import { findInReactTree } from "@vendetta/utils";
 import React from "react";
-
 import Settings from "./Settings";
 import LastOnlineText from "./LastOnlineText";
 
-let unpatches: (() => void)[] = [];
+let unpatches = [];
+let saveInterval;
 
 export default {
     onLoad: () => {
-        /*
-         * Persistent settings
-         *
-         * These values are saved by Vendetta storage and
-         * survive Discord/plugin restarts.
-         */
+        // =========================================================
+        // Persistent settings
+        // =========================================================
+
         storage.dmTopBar ??= true;
         storage.userList ??= true;
         storage.profileUsername ??= true;
 
-        /*
-         * Persistent last-online database.
-         *
-         * Example:
-         * storage.lastOnlineData["123456789"] = 1758080000000;
-         *
-         * This object remains in plugin storage after restarts.
-         */
+        // =========================================================
+        // Persistent last-online storage
+        // =========================================================
+
         storage.lastOnlineData ??= {};
+        storage.lastOnlineCache ??= {};
+
+        /*
+         * Restore previously saved timestamps.
+         *
+         * We merge instead of replacing the current data so that
+         * timestamps supplied by Discord are not lost.
+         */
+        storage.lastOnlineData = {
+            ...storage.lastOnlineCache,
+            ...storage.lastOnlineData
+        };
+
+        /*
+         * Continuously save lastOnlineData into a separate
+         * persistent cache.
+         *
+         * This is important because Discord can be force-closed,
+         * meaning onUnload() is not guaranteed to run.
+         */
+        const saveLastOnline = () => {
+            if (!storage.lastOnlineData) return;
+
+            storage.lastOnlineCache = {
+                ...storage.lastOnlineCache,
+                ...storage.lastOnlineData
+            };
+        };
+
+        saveInterval = setInterval(saveLastOnline, 5000);
+
+        // Save immediately as well.
+        saveLastOnline();
 
         // =========================================================
         // 1. DM Header Injection
@@ -70,9 +97,7 @@ export default {
                                             m?.props?.user?.id
                                     )?.props?.user?.id;
 
-                                if (!userId) {
-                                    return;
-                                }
+                                if (!userId) return;
 
                                 const titleComp =
                                     headerRes?.props
@@ -131,9 +156,7 @@ export default {
                     "type",
                     UserProfileContent,
                     (_, res) => {
-                        if (!storage.profileUsername) {
-                            return;
-                        }
+                        if (!storage.profileUsername) return;
 
                         const primaryInfo =
                             findInReactTree(
@@ -143,9 +166,7 @@ export default {
                                     "PrimaryInfo"
                             );
 
-                        if (!primaryInfo) {
-                            return;
-                        }
+                        if (!primaryInfo) return;
 
                         patcher.after(
                             "type",
@@ -170,9 +191,7 @@ export default {
                                                     "DisplayName"
                                             );
 
-                                        if (!displayName) {
-                                            return;
-                                        }
+                                        if (!displayName) return;
 
                                         patcher.after(
                                             "type",
@@ -182,8 +201,7 @@ export default {
                                                 displayRes
                                             ) => {
                                                 const userId =
-                                                    args[0]?.user
-                                                        ?.id;
+                                                    args[0]?.user?.id;
 
                                                 if (
                                                     userId &&
@@ -221,8 +239,7 @@ export default {
         const rowPatch = ([{ user }], res) => {
             if (
                 !storage.userList ||
-                !user?.id ||
-                !res?.props
+                !user?.id
             ) {
                 return;
             }
@@ -234,7 +251,7 @@ export default {
                     "LastOnline-UserRow"
             );
 
-            if (!existing) {
+            if (!existing && res?.props) {
                 const originalLabel =
                     res.props.label;
 
@@ -318,9 +335,22 @@ export default {
     // =============================================================
 
     onUnload: () => {
-        unpatches.forEach(unpatch => {
+        // Final save before unloading.
+        if (storage.lastOnlineData) {
+            storage.lastOnlineCache = {
+                ...storage.lastOnlineCache,
+                ...storage.lastOnlineData
+            };
+        }
+
+        if (saveInterval) {
+            clearInterval(saveInterval);
+            saveInterval = undefined;
+        }
+
+        unpatches.forEach(u => {
             try {
-                unpatch();
+                u();
             } catch {}
         });
 
