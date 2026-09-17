@@ -1,9 +1,9 @@
 import { React, ReactNative as RN } from "@vendetta/metro/common";
 import { findByProps, findByStoreName } from "@vendetta/metro";
+import { patcher } from "@vendetta";
 import { storage } from "@vendetta/plugin";
 import { useProxy } from "@vendetta/storage";
 
-// UI Components via findByProps
 const { ScrollView } = findByProps("ScrollView");
 const { TableRowGroup, TableRadioGroup, TableRadioRow, TableSwitchRow, Stack } = findByProps(
   "TableRadioGroup",
@@ -19,6 +19,7 @@ storage.settings ??= {
   label: "Active",
   timeFormat: "relative",
   persist: true,
+  chatMessages: true,
   dmList: true,
   memberList: true,
   header: true,
@@ -28,17 +29,24 @@ storage.lastSeen ??= {};
 const MAX_TRACKED = 500;
 const lastSeen = new Map<string, number>();
 
-// Hydration
+// In-memory hydration
 if (storage.settings.persist && storage.lastSeen) {
-  for (const [id, ts] of Object.entries(storage.lastSeen)) {
+  const cached = storage.lastSeen;
+  for (const id in cached) {
+    const ts = cached[id];
     if (typeof ts === "number" && ts > 0) lastSeen.set(id, ts);
   }
 }
 
+// --- Debounced Storage Writer (Prevents Main Thread Lag) ---
+let persistTimeout: any = null;
 const schedulePersist = () => {
-  if (storage.settings.persist) {
+  if (!storage.settings.persist || persistTimeout) return;
+
+  persistTimeout = setTimeout(() => {
+    persistTimeout = null;
     storage.lastSeen = Object.fromEntries(lastSeen);
-  }
+  }, 5000);
 };
 
 const markSeen = (userId: string) => {
@@ -72,10 +80,11 @@ const formatTime = (ts: number) =>
 
 const labelFor = (ts: number) => `${storage.settings.label || "Active"} ${formatTime(ts)}`;
 
-// --- Stores & Metro Finders ---
+// --- Stores & Finders ---
 const PresenceStore = findByStoreName("PresenceStore") || findByProps("getStatus");
 const UserStore = findByStoreName("UserStore");
 const FluxDispatcher = findByProps("dispatch", "subscribe");
+const MessageAuthorModule = findByProps("getMessageAuthor", "useNullableMessageAuthor");
 
 const isOffline = (userId: string) => {
   try {
@@ -85,19 +94,26 @@ const isOffline = (userId: string) => {
   }
 };
 
-// --- Presence Listener ---
+// --- Optimized Presence Listener ---
 const seenOnline = new Set<string>();
 let unsubPresence: (() => void) | null = null;
 
 const startPresence = () => {
   const handlePresenceUpdate = (e: any) => {
-    for (const { user, status } of e?.updates ?? []) {
-      if (!user?.id) continue;
+    const updates = e?.updates;
+    if (!updates || !updates.length) return;
+
+    for (let i = 0; i < updates.length; i++) {
+      const update = updates[i];
+      const userId = update?.user?.id;
+      if (!userId) continue;
+
+      const status = update.status;
       if (status === "offline") {
-        if (seenOnline.has(user.id)) markSeen(user.id);
-        seenOnline.delete(user.id);
+        if (seenOnline.has(userId)) markSeen(userId);
+        seenOnline.delete(userId);
       } else if (status) {
-        seenOnline.add(user.id);
+        seenOnline.add(userId);
       }
     }
   };
@@ -106,59 +122,84 @@ const startPresence = () => {
   unsubPresence = () => FluxDispatcher?.unsubscribe?.("PRESENCE_UPDATES", handlePresenceUpdate);
 };
 
-// --- Proxy Implementation for UserStore ---
+// --- UserStore Proxy & Message Author Patch ---
 let origGetUser: any = null;
 const proxyCache = new WeakMap<object, any>();
+const unpatches: Array<() => void> = [];
 
-function patchUserStore() {
-  if (!UserStore?.getUser || origGetUser) return;
+function applyPatches() {
+  // 1. UserStore Proxy Patch
+  if (UserStore?.getUser && !origGetUser) {
+    origGetUser = UserStore.getUser;
+    const currentUserId = UserStore.getCurrentUser()?.id;
 
-  origGetUser = UserStore.getUser;
-  const currentUserId = UserStore.getCurrentUser()?.id;
+    UserStore.getUser = function (id: string) {
+      const user = origGetUser.call(this, id);
+      if (!user || id === currentUserId) return user;
 
-  UserStore.getUser = function (id: string) {
-    const user = origGetUser.call(this, id);
-    if (!user || id === currentUserId) return user;
+      const anyEnabled =
+        storage.settings.dmList !== false ||
+        storage.settings.memberList !== false ||
+        storage.settings.header !== false ||
+        storage.settings.chatMessages !== false;
 
-    // Check settings toggles
-    const anyEnabled =
-      storage.settings.dmList !== false ||
-      storage.settings.memberList !== false ||
-      storage.settings.header !== false;
+      if (!anyEnabled) return user;
 
-    if (!anyEnabled) return user;
+      const seenAt = getSeen(id);
+      if (seenAt === undefined || !isOffline(id)) return user;
 
-    const seenAt = getSeen(id);
-    if (!isOffline(id) || seenAt === undefined) return user;
+      if (proxyCache.has(user)) {
+        return proxyCache.get(user);
+      }
 
-    // Return cached proxy if present
-    if (proxyCache.has(user)) {
-      return proxyCache.get(user);
-    }
+      const proxiedUser = new Proxy(user, {
+        get(target, prop, receiver) {
+          if (prop === "globalName" || prop === "username") {
+            const originalName = target[prop];
+            if (!originalName) return originalName;
+            return `${originalName} • ${labelFor(seenAt)}`;
+          }
+          return Reflect.get(target, prop, receiver);
+        },
+      });
 
-    const label = labelFor(seenAt);
+      proxyCache.set(user, proxiedUser);
+      return proxiedUser;
+    };
+  }
 
-    const proxiedUser = new Proxy(user, {
-      get(target, prop, receiver) {
-        if (prop === "globalName" || prop === "username") {
-          const originalName = target[prop];
-          if (!originalName) return originalName;
-          return `${originalName} • ${label}`;
+  // 2. Chat Message Author Patch (Module 4793)
+  if (MessageAuthorModule?.getMessageAuthor) {
+    unpatches.push(
+      patcher.after(MessageAuthorModule, "getMessageAuthor", (_args, author) => {
+        if (!author) return author;
+
+        // If chat message display is DISABLED, strip appended time string
+        if (storage.settings.chatMessages === false) {
+          if (typeof author.nick === "string" && author.nick.includes(" • ")) {
+            author.nick = author.nick.split(" • ")[0];
+          }
+          if (typeof author.username === "string" && author.username.includes(" • ")) {
+            author.username = author.username.split(" • ")[0];
+          }
         }
-        return Reflect.get(target, prop, receiver);
-      },
-    });
-
-    proxyCache.set(user, proxiedUser);
-    return proxiedUser;
-  };
+        return author;
+      })
+    );
+  }
 }
 
-function unpatchUserStore() {
+function removePatches() {
   if (UserStore && origGetUser) {
     UserStore.getUser = origGetUser;
     origGetUser = null;
   }
+  unpatches.forEach((u) => {
+    try {
+      u();
+    } catch (e) {}
+  });
+  unpatches.length = 0;
 }
 
 // --- Settings Component ---
@@ -172,7 +213,6 @@ function Settings() {
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }}>
       <Stack spacing={16}>
-        {/* Label Radio Options */}
         <TableRadioGroup
           title="Label"
           value={selectedLabel}
@@ -189,7 +229,6 @@ function Settings() {
           ))}
         </TableRadioGroup>
 
-        {/* Time Format Radio Options */}
         <TableRadioGroup
           title="Time format"
           value={selectedFormat}
@@ -209,13 +248,18 @@ function Settings() {
           />
         </TableRadioGroup>
 
-        {/* Display Switches */}
         <TableRowGroup title="Where to show it">
           {FormText && (
             <FormText style={{ paddingHorizontal: 12, paddingBottom: 4, opacity: 0.6, fontSize: 12 }}>
               Control where last-seen status indicators render across mobile UI surfaces.
             </FormText>
           )}
+          <TableSwitchRow
+            label="In channel messages"
+            subLabel="Show last-seen time in chat message headers"
+            value={!!storage.settings.chatMessages}
+            onValueChange={(v: boolean) => (storage.settings.chatMessages = v)}
+          />
           <TableSwitchRow
             label="DM list"
             value={!!storage.settings.dmList}
@@ -233,7 +277,6 @@ function Settings() {
           />
         </TableRowGroup>
 
-        {/* Persistence Options */}
         <TableRowGroup title="Persistence">
           <TableSwitchRow
             label="Save last-seen across restarts"
@@ -258,7 +301,7 @@ export default {
   onLoad: () => {
     try {
       startPresence();
-      patchUserStore();
+      applyPatches();
     } catch (err) {
       console.log("[LastOnlineTracker Load Error]:", err);
     }
@@ -266,7 +309,8 @@ export default {
 
   onUnload: () => {
     if (unsubPresence) unsubPresence();
-    unpatchUserStore();
+    if (persistTimeout) clearTimeout(persistTimeout);
+    removePatches();
   },
 
   settings: Settings,
