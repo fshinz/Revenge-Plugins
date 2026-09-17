@@ -37,7 +37,7 @@ if (storage.settings.persist && storage.lastSeen) {
   }
 }
 
-// --- Debounced Storage Writer (Prevents Main Thread Lag) ---
+// --- Debounced Storage Writer ---
 let persistTimeout: any = null;
 const schedulePersist = () => {
   if (!storage.settings.persist || persistTimeout) return;
@@ -128,7 +128,7 @@ const startPresence = () => {
 const unpatches: Array<() => void> = [];
 
 function applyPatches() {
-  // 1. Channel Messages (Module 4793)
+  // 1. Channel Messages
   if (MessageAuthorModule?.getMessageAuthor) {
     unpatches.push(
       patcher.after(MessageAuthorModule, "getMessageAuthor", (_args, author) => {
@@ -191,7 +191,7 @@ function removePatches() {
   unpatches.length = 0;
 }
 
-// --- Settings Component ---
+// --- Table-Based Settings Component ---
 const LABELS = ["Active", "Last seen", "Online", "Seen"];
 
 function Settings() {
@@ -285,7 +285,7 @@ function Settings() {
   );
 }
 
-// --- Plugin Implementation ---
+// --- Plugin Entrypoint ---
 export default {
   onLoad: () => {
     try {
