@@ -1,22 +1,18 @@
 import { React, ReactNative as RN } from "@vendetta/metro/common";
 import { findByProps, findByStoreName } from "@vendetta/metro";
-import { patcher } from "@vendetta";
 import { storage } from "@vendetta/plugin";
 import { useProxy } from "@vendetta/storage";
 
-// --- Metro Component & Store Finders ---
-const { ScrollView, View } = RN;
-const { TableRowGroup, TableRadioGroup, TableRadioRow, TableSwitchRow } = findByProps(
+// UI Components via findByProps
+const { ScrollView } = findByProps("ScrollView");
+const { TableRowGroup, TableRadioGroup, TableRadioRow, TableSwitchRow, Stack } = findByProps(
   "TableRadioGroup",
   "TableRadioRow",
   "TableSwitchRow",
-  "TableRowGroup"
+  "TableRowGroup",
+  "Stack"
 );
-const Text = findByProps("Text")?.Text || findByProps("TextStyleSheet")?.Text;
-const Page = findByProps("Page")?.Page || View;
-
-const PresenceStore = findByStoreName("PresenceStore") || findByProps("getStatus");
-const FluxDispatcher = findByProps("dispatch", "subscribe");
+const FormText = findByProps("FormText")?.FormText || findByProps("Text")?.Text;
 
 // --- Storage Setup ---
 storage.settings ??= {
@@ -32,35 +28,17 @@ storage.lastSeen ??= {};
 const MAX_TRACKED = 500;
 const lastSeen = new Map<string, number>();
 
-// Hydrate stored cache
+// Hydration
 if (storage.settings.persist && storage.lastSeen) {
   for (const [id, ts] of Object.entries(storage.lastSeen)) {
-    if (typeof ts === "number" && ts > 0) lastSeen.set(id, ts as number);
+    if (typeof ts === "number" && ts > 0) lastSeen.set(id, ts);
   }
 }
 
-let persistTimer: any = null;
 const schedulePersist = () => {
-  clearTimeout(persistTimer);
-  persistTimer = setTimeout(() => {
-    if (storage.settings.persist) {
-      storage.lastSeen = Object.fromEntries(lastSeen);
-    }
-  }, 1500);
-};
-
-const flushPersist = () => {
-  if (!persistTimer) return;
-  clearTimeout(persistTimer);
-  persistTimer = null;
   if (storage.settings.persist) {
     storage.lastSeen = Object.fromEntries(lastSeen);
   }
-};
-
-const clearPersisted = () => {
-  lastSeen.clear();
-  storage.lastSeen = {};
 };
 
 const markSeen = (userId: string) => {
@@ -70,18 +48,10 @@ const markSeen = (userId: string) => {
     const firstKey = lastSeen.keys().next().value;
     if (firstKey) lastSeen.delete(firstKey);
   }
-  if (storage.settings.persist) schedulePersist();
+  schedulePersist();
 };
 
 const getSeen = (userId: string) => lastSeen.get(userId);
-
-const isOffline = (userId: string) => {
-  try {
-    return (PresenceStore?.getStatus?.(userId) ?? "online") === "offline";
-  } catch {
-    return false;
-  }
-};
 
 // --- Time Helpers ---
 const formatRelative = (ms: number) => {
@@ -100,7 +70,20 @@ const formatTime = (ts: number) =>
     ? new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
     : formatRelative(Date.now() - ts);
 
-const labelFor = (ts: number) => `${storage.settings.label ?? "Active"} ${formatTime(ts)}`;
+const labelFor = (ts: number) => `${storage.settings.label || "Active"} ${formatTime(ts)}`;
+
+// --- Stores & Metro Finders ---
+const PresenceStore = findByStoreName("PresenceStore") || findByProps("getStatus");
+const UserStore = findByStoreName("UserStore");
+const FluxDispatcher = findByProps("dispatch", "subscribe");
+
+const isOffline = (userId: string) => {
+  try {
+    return (PresenceStore?.getStatus?.(userId) ?? "offline") === "offline";
+  } catch {
+    return false;
+  }
+};
 
 // --- Presence Listener ---
 const seenOnline = new Set<string>();
@@ -123,194 +106,159 @@ const startPresence = () => {
   unsubPresence = () => FluxDispatcher?.unsubscribe?.("PRESENCE_UPDATES", handlePresenceUpdate);
 };
 
-// --- UI Helpers ---
-const hasVisibleText = (node: any): boolean => {
-  if (node == null || node === "") return false;
-  if (typeof node === "string") return node.trim().length > 0;
-  if (Array.isArray(node)) return node.length > 0 && node.some(hasVisibleText);
-  if (node && typeof node === "object")
-    return "children" in (node.props || {}) ? hasVisibleText(node.props.children) : true;
-  return false;
-};
+// --- Proxy Implementation for UserStore ---
+let origGetUser: any = null;
+const proxyCache = new WeakMap<object, any>();
 
-const renderText = (children: string) =>
-  Text ? <Text variant="text-xs/medium" color="text-muted">{children}</Text> : null;
+function patchUserStore() {
+  if (!UserStore?.getUser || origGetUser) return;
 
-const combine = (native: any, label: string) =>
-  hasVisibleText(native) ? (
-    <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap" }}>
-      {native}
-      {renderText(` · ${label}`)}
-    </View>
-  ) : (
-    renderText(label)
-  );
+  origGetUser = UserStore.getUser;
+  const currentUserId = UserStore.getCurrentUser()?.id;
 
-// Tree traversal helper to locate nodes in react element trees
-const findInTree = (tree: any, filter: (node: any) => boolean, maxDepth = 100): any => {
-  if (maxDepth <= 0 || !tree) return null;
-  if (filter(tree)) return tree;
+  UserStore.getUser = function (id: string) {
+    const user = origGetUser.call(this, id);
+    if (!user || id === currentUserId) return user;
 
-  if (Array.isArray(tree)) {
-    for (const item of tree) {
-      const found = findInTree(item, filter, maxDepth - 1);
-      if (found) return found;
+    // Check settings toggles
+    const anyEnabled =
+      storage.settings.dmList !== false ||
+      storage.settings.memberList !== false ||
+      storage.settings.header !== false;
+
+    if (!anyEnabled) return user;
+
+    const seenAt = getSeen(id);
+    if (!isOffline(id) || seenAt === undefined) return user;
+
+    // Return cached proxy if present
+    if (proxyCache.has(user)) {
+      return proxyCache.get(user);
     }
-  } else if (typeof tree === "object") {
-    const props = tree.props;
-    if (props) {
-      if (props.children) {
-        const found = findInTree(props.children, filter, maxDepth - 1);
-        if (found) return found;
-      }
-      for (const key of Object.keys(props)) {
-        if (key === "children") continue;
-        const found = findInTree(props[key], filter, maxDepth - 1);
-        if (found) return found;
-      }
-    }
+
+    const label = labelFor(seenAt);
+
+    const proxiedUser = new Proxy(user, {
+      get(target, prop, receiver) {
+        if (prop === "globalName" || prop === "username") {
+          const originalName = target[prop];
+          if (!originalName) return originalName;
+          return `${originalName} • ${label}`;
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+
+    proxyCache.set(user, proxiedUser);
+    return proxiedUser;
+  };
+}
+
+function unpatchUserStore() {
+  if (UserStore && origGetUser) {
+    UserStore.getUser = origGetUser;
+    origGetUser = null;
   }
-  return null;
-};
-
-const matchesName = (node: any, name: string) =>
-  node?.type?.name === name || node?.type?.type?.name === name || node?.type?.render?.name === name;
+}
 
 // --- Settings Component ---
 const LABELS = ["Active", "Last seen", "Online", "Seen"];
 
-function SettingsComponent() {
+function Settings() {
   useProxy(storage);
+  const selectedLabel = storage.settings.label || "Active";
+  const selectedFormat = storage.settings.timeFormat || "relative";
 
   return (
-    <Page style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={{ padding: 12 }}>
-        <TableRowGroup title="Label">
-          <TableRadioGroup
-            value={storage.settings.label ?? "Active"}
-            onChange={(v: string) => (storage.settings.label = v)}
-          >
-            {LABELS.map((v) => (
-              <TableRadioRow key={v} label={v} value={v} selected={storage.settings.label === v} />
-            ))}
-          </TableRadioGroup>
-        </TableRowGroup>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }}>
+      <Stack spacing={16}>
+        {/* Label Radio Options */}
+        <TableRadioGroup
+          title="Label"
+          value={selectedLabel}
+          onChange={(val: string) => (storage.settings.label = val)}
+        >
+          {LABELS.map((v) => (
+            <TableRadioRow
+              key={v}
+              label={v}
+              value={v}
+              selected={selectedLabel === v}
+              onPress={() => (storage.settings.label = v)}
+            />
+          ))}
+        </TableRadioGroup>
 
-        <TableRowGroup title="Time format">
-          <TableRadioGroup
-            value={storage.settings.timeFormat ?? "relative"}
-            onChange={(v: string) => (storage.settings.timeFormat = v)}
-          >
-            <TableRadioRow label="Relative (5m ago)" value="relative" selected={storage.settings.timeFormat === "relative"} />
-            <TableRadioRow label="Exact (2:34 PM)" value="exact" selected={storage.settings.timeFormat === "exact"} />
-          </TableRadioGroup>
-        </TableRowGroup>
+        {/* Time Format Radio Options */}
+        <TableRadioGroup
+          title="Time format"
+          value={selectedFormat}
+          onChange={(val: string) => (storage.settings.timeFormat = val)}
+        >
+          <TableRadioRow
+            label="Relative (5m ago)"
+            value="relative"
+            selected={selectedFormat === "relative"}
+            onPress={() => (storage.settings.timeFormat = "relative")}
+          />
+          <TableRadioRow
+            label="Exact (2:34 PM)"
+            value="exact"
+            selected={selectedFormat === "exact"}
+            onPress={() => (storage.settings.timeFormat = "exact")}
+          />
+        </TableRadioGroup>
 
+        {/* Display Switches */}
         <TableRowGroup title="Where to show it">
-          {renderText("These act as one on/off switch right now (any one enabled shows it everywhere).")}
+          {FormText && (
+            <FormText style={{ paddingHorizontal: 12, paddingBottom: 4, opacity: 0.6, fontSize: 12 }}>
+              Control where last-seen status indicators render across mobile UI surfaces.
+            </FormText>
+          )}
           <TableSwitchRow
             label="DM list"
-            subLabel="Can look inconsistent or flicker in the DM list if your message previews is set to All."
-            value={storage.settings.dmList ?? true}
+            value={!!storage.settings.dmList}
             onValueChange={(v: boolean) => (storage.settings.dmList = v)}
           />
           <TableSwitchRow
             label="Member list"
-            subLabel="Server and DM member lists both"
-            value={storage.settings.memberList ?? true}
+            value={!!storage.settings.memberList}
             onValueChange={(v: boolean) => (storage.settings.memberList = v)}
           />
           <TableSwitchRow
             label="DM header"
-            value={storage.settings.header ?? true}
+            value={!!storage.settings.header}
             onValueChange={(v: boolean) => (storage.settings.header = v)}
           />
         </TableRowGroup>
 
+        {/* Persistence Options */}
         <TableRowGroup title="Persistence">
           <TableSwitchRow
             label="Save last-seen across restarts"
             subLabel="A saved time only updates the next time that person goes offline again."
-            value={storage.settings.persist ?? true}
+            value={!!storage.settings.persist}
             onValueChange={(v: boolean) => {
               storage.settings.persist = v;
-              if (!v) clearPersisted();
+              if (!v) {
+                lastSeen.clear();
+                storage.lastSeen = {};
+              }
             }}
           />
         </TableRowGroup>
-      </ScrollView>
-    </Page>
+      </Stack>
+    </ScrollView>
   );
 }
 
 // --- Plugin Implementation ---
-const unpatches: Array<() => void> = [];
-let activityStatusOrig: any = null;
-
 export default {
   onLoad: () => {
     try {
       startPresence();
-
-      // 1. MessagesItemChannelContent Patch
-      const ChannelContentModule = findByProps("MessagesItemChannelContent") || findByProps("ChannelItemRow");
-      if (ChannelContentModule) {
-        const targetKey = ChannelContentModule.MessagesItemChannelContent ? "MessagesItemChannelContent" : "default";
-
-        unpatches.push(
-          patcher.instead(ChannelContentModule, targetKey, (args, orig) => {
-            const props = args[0];
-            const rendered = orig(...args);
-            if (storage.settings.dmList !== true) return rendered;
-
-            const recipients = props?.channel?.recipients;
-            if (recipients?.length !== 1) return rendered;
-
-            const seenAt = getSeen(recipients[0]);
-            if (!isOffline(recipients[0]) || seenAt === undefined) return rendered;
-            const label = labelFor(seenAt);
-
-            const actNode = findInTree(rendered, (n) => matchesName(n, "ActivityStatus"));
-            if (actNode && activityStatusOrig) {
-              actNode.type = (p: any) => combine(activityStatusOrig(p), label);
-              return rendered;
-            }
-
-            const nameNode = findInTree(rendered, (n) => n?.props?.children?.[0]?.props?.variant === "text-md/medium");
-            if (nameNode) {
-              const original = nameNode.props.children;
-              nameNode.props.children = (
-                <View style={{ flexDirection: "column" }}>
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>{original}</View>
-                  {renderText(label)}
-                </View>
-              );
-            }
-            return rendered;
-          })
-        );
-      }
-
-      // 2. ActivityStatus Patch
-      const ActivityStatusModule = findByProps("ActivityStatus") || findByProps("renderActivityStatus");
-      if (ActivityStatusModule) {
-        const targetKey = ActivityStatusModule.ActivityStatus ? "ActivityStatus" : "default";
-
-        unpatches.push(
-          patcher.instead(ActivityStatusModule, targetKey, (args, orig) => {
-            activityStatusOrig = orig;
-            const props = args[0];
-            const rendered = orig(...args);
-            const enabled = storage.settings.header !== false || storage.settings.memberList !== false;
-
-            if (!props?.userId || !enabled) return rendered;
-            const seenAt = getSeen(props.userId);
-            if (!isOffline(props.userId) || seenAt === undefined) return rendered;
-
-            return combine(rendered, labelFor(seenAt));
-          })
-        );
-      }
+      patchUserStore();
     } catch (err) {
       console.log("[LastOnlineTracker Load Error]:", err);
     }
@@ -318,14 +266,8 @@ export default {
 
   onUnload: () => {
     if (unsubPresence) unsubPresence();
-    flushPersist();
-    unpatches.forEach((u) => {
-      try {
-        u();
-      } catch (e) {}
-    });
-    unpatches.length = 0;
+    unpatchUserStore();
   },
 
-  settings: SettingsComponent,
+  settings: Settings,
 };
