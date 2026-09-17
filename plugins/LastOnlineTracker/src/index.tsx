@@ -16,40 +16,44 @@ export default {
         storage.profileUsername ??= true;
         storage.lastOnlineData ??= {};
 
-        // 1. Updated DM Header Patch
-        const Header = findByName("Header") || findByProps("Header")?.Header;
-        if (Header) {
-            const funcName = typeof Header === "function" ? "render" : "default";
-            unpatches.push(patcher.after(funcName in Header ? funcName : (typeof Header === "function" ? Header : "default"), Header, (_, res) => {
-                if (!storage.dmTopBar) return;
+        // 1. Safe DM Header Injection
+        const HeaderModule = findByProps("Header") || findByName("Header", false);
+        if (HeaderModule) {
+            const funcKey = HeaderModule.Header ? "Header" : (HeaderModule.default ? "default" : null);
+            if (funcKey) {
+                unpatches.push(patcher.after(funcKey, HeaderModule, (_, res) => {
+                    if (!storage.dmTopBar) return;
 
-                const userId = findInReactTree(res, c => c?.props?.user?.id)?.props?.user?.id;
-                if (!userId) return;
+                    const userId = findInReactTree(res, c => c?.props?.user?.id)?.props?.user?.id;
+                    if (!userId) return;
 
-                const titleContainer = findInReactTree(res, c => c?.props?.children && Array.isArray(c.props.children));
-                if (titleContainer && !findInReactTree(res, c => c?.key === "LastOnline-DMHeader")) {
-                    titleContainer.props.children.push(
-                        <LastOnlineText key="LastOnline-DMHeader" userId={userId} />
-                    );
-                }
-            }));
+                    const titleContainer = findInReactTree(res, c => c?.props?.children && Array.isArray(c.props.children));
+                    if (titleContainer && !findInReactTree(res, c => c?.key === "LastOnline-DMHeader")) {
+                        titleContainer.props.children.push(
+                            <LastOnlineText key="LastOnline-DMHeader" userId={userId} />
+                        );
+                    }
+                }));
+            }
         }
 
-        const ChannelHeader = findByName("ChannelHeader", false);
-        if (ChannelHeader) {
-            const funcName = typeof ChannelHeader === "function" ? ChannelHeader : (ChannelHeader.default ? "default" : "type");
-            unpatches.push(patcher.after(funcName, ChannelHeader, (_, res) => {
-                if (!storage.dmTopBar) return;
-                const userId = findInReactTree(res, m => m?.props?.user?.id)?.props?.user?.id;
-                if (!userId) return;
+        const ChannelHeaderModule = findByProps("ChannelHeader") || findByName("ChannelHeader", false);
+        if (ChannelHeaderModule) {
+            const funcKey = ChannelHeaderModule.ChannelHeader ? "ChannelHeader" : (ChannelHeaderModule.default ? "default" : null);
+            if (funcKey) {
+                unpatches.push(patcher.after(funcKey, ChannelHeaderModule, (_, res) => {
+                    if (!storage.dmTopBar) return;
+                    const userId = findInReactTree(res, m => m?.props?.user?.id)?.props?.user?.id;
+                    if (!userId) return;
 
-                const targetNode = findInReactTree(res, c => Array.isArray(c?.props?.children));
-                if (targetNode && !findInReactTree(res, c => c?.key === "LastOnline-DMHeader")) {
-                    targetNode.props.children.push(
-                        <LastOnlineText key="LastOnline-DMHeader" userId={userId} />
-                    );
-                }
-            }));
+                    const targetNode = findInReactTree(res, c => Array.isArray(c?.props?.children));
+                    if (targetNode && !findInReactTree(res, c => c?.key === "LastOnline-DMHeader")) {
+                        targetNode.props.children.push(
+                            <LastOnlineText key="LastOnline-DMHeader" userId={userId} />
+                        );
+                    }
+                }));
+            }
         }
 
         // 2. Profile Screen Injection
