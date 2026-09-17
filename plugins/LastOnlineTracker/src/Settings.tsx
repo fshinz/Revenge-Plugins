@@ -14,25 +14,17 @@ export default function Settings() {
                 <Forms.FormSwitchRow
                     label="Show Last Online on DM Header"
                     value={storage.dmTopBar ?? true}
-                    onValueChange={v => {
-                        storage.dmTopBar = v;
-                    }}
+                    onValueChange={v => storage.dmTopBar = v}
                 />
-
                 <Forms.FormSwitchRow
                     label="Show Last Online in Member/DM List"
                     value={storage.userList ?? true}
-                    onValueChange={v => {
-                        storage.userList = v;
-                    }}
+                    onValueChange={v => storage.userList = v}
                 />
-
                 <Forms.FormSwitchRow
                     label="Show Last Online on User Profiles"
                     value={storage.profileUsername ?? true}
-                    onValueChange={v => {
-                        storage.profileUsername = v;
-                    }}
+                    onValueChange={v => storage.profileUsername = v}
                 />
             </View>
         </ScrollView>
