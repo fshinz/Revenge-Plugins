@@ -2,18 +2,17 @@
 import React, { useState, useEffect } from "react";
 import { findByStoreName } from "@vendetta/metro";
 import { ReactNative, FluxDispatcher } from "@vendetta/metro/common";
+import { storage } from "@vendetta/plugin";
 
 const { Text, View } = ReactNative;
 const PresenceStore = findByStoreName("PresenceStore");
 
-// In-memory timestamp store updated via Gateway events
-const lastSeenCache = new Map<string, number>();
-
-// Listen to presence events directly to prevent continuous re-rendering
+// Listen to presence events directly and persist offline timestamps across app restarts
 FluxDispatcher.subscribe("PRESENCE_UPDATES", (data: any) => {
     for (const update of data.updates ?? []) {
         if (update.status === "offline") {
-            lastSeenCache.set(update.user.id, Date.now());
+            if (!storage.lastOnlineData) storage.lastOnlineData = {};
+            storage.lastOnlineData[update.user.id] = Date.now();
         }
     }
 });
@@ -33,7 +32,7 @@ export default function LastOnlineText({ userId }: { userId: string }) {
     const isOnline = Boolean(presence && Object.keys(presence).length > 0);
 
     const [formattedTime, setFormattedTime] = useState<string>(() => 
-        isOnline ? "Online" : formatLastSeen(lastSeenCache.get(userId))
+        isOnline ? "Online" : formatLastSeen(storage.lastOnlineData?.[userId])
     );
 
     useEffect(() => {
@@ -43,7 +42,7 @@ export default function LastOnlineText({ userId }: { userId: string }) {
         }
 
         const updateTime = () => {
-            setFormattedTime(formatLastSeen(lastSeenCache.get(userId)));
+            setFormattedTime(formatLastSeen(storage.lastOnlineData?.[userId]));
         };
 
         updateTime();
