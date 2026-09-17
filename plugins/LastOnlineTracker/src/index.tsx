@@ -14,8 +14,6 @@ export default {
         storage.dmTopBar ??= true;
         storage.userList ??= true;
         storage.profileUsername ??= true;
-        
-        // Ensure persistent storage object exists on startup
         storage.lastOnlineData ??= {};
 
         // 1. DM Header Injection
