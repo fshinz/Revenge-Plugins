@@ -1,61 +1,51 @@
-// --- LastOnlineText.tsx ---
 import React, { useState, useEffect } from "react";
-import { findByStoreName } from "@vendetta/metro";
-import { ReactNative, FluxDispatcher } from "@vendetta/metro/common";
+import { ReactNative } from "@vendetta/metro/common";
+import { storage } from "@vendetta/plugin";
+import { useProxy } from "@vendetta/storage";
 
-const { Text, View } = ReactNative;
-const PresenceStore = findByStoreName("PresenceStore");
+const { Text } = ReactNative;
 
-// In-memory timestamp store updated via Gateway events
-const lastSeenCache = new Map<string, number>();
+function formatTimestamp(timestamp, format) {
+    if (!timestamp) return null;
+    const date = new Date(timestamp);
 
-// Listen to presence events directly to prevent continuous re-rendering
-FluxDispatcher.subscribe("PRESENCE_UPDATES", (data: any) => {
-    for (const update of data.updates ?? []) {
-        if (update.status === "offline") {
-            lastSeenCache.set(update.user.id, Date.now());
-        }
+    if (format === "exact") {
+        return date.toLocaleString([], {
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit"
+        });
     }
-});
 
-function formatLastSeen(timestamp: number | undefined): string {
-    if (!timestamp) return "Offline";
-    const diff = Math.floor((Date.now() - timestamp) / 1000);
-    
-    if (diff < 60) return "Just now";
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
+    // Relative Time
+    const diffSeconds = Math.floor((Date.now() - timestamp) / 1000);
+    if (diffSeconds < 60) return "Just now";
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
 }
 
-export default function LastOnlineText({ userId }: { userId: string }) {
-    const presence = PresenceStore.getState()?.clientStatuses?.[userId];
-    const isOnline = Boolean(presence && Object.keys(presence).length > 0);
-
-    const [formattedTime, setFormattedTime] = useState<string>(() => 
-        isOnline ? "Online" : formatLastSeen(lastSeenCache.get(userId))
-    );
+export default function LastSeenText({ userId, style }) {
+    useProxy(storage);
+    const [timeStr, setTimeStr] = useState(() => formatTimestamp(storage.lastOnlineData?.[userId], storage.timeFormat));
 
     useEffect(() => {
-        if (isOnline) {
-            setFormattedTime("Online");
-            return;
-        }
+        const interval = setInterval(() => {
+            setTimeStr(formatTimestamp(storage.lastOnlineData?.[userId], storage.timeFormat));
+        }, 30000); // Refresh every 30s for relative time accuracy
 
-        const updateTime = () => {
-            setFormattedTime(formatLastSeen(lastSeenCache.get(userId)));
-        };
-
-        updateTime();
-        const interval = setInterval(updateTime, 30000); // Low-overhead 30s tick
         return () => clearInterval(interval);
-    }, [userId, isOnline]);
+    }, [userId, storage.timeFormat]);
+
+    if (!timeStr) return null;
 
     return (
-        <View style={{ flexDirection: "row", alignItems: "center", marginLeft: 4 }}>
-            <Text style={{ fontSize: 12, color: isOnline ? "#23a55a" : "#80848e" }}>
-                {formattedTime}
-            </Text>
-        </View>
+        <Text style={[{ color: "#949ba4" }, style]}>
+            Last seen: {timeStr}
+        </Text>
     );
 }
