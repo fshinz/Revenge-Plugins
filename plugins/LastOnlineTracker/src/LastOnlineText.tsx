@@ -1,3 +1,4 @@
+// --- LastOnlineText.tsx ---
 import React, { useState, useEffect } from "react";
 import { ReactNative } from "@vendetta/metro/common";
 import { storage } from "@vendetta/plugin";
@@ -31,15 +32,22 @@ function formatTimestamp(timestamp, format) {
 
 export default function LastSeenText({ userId, style }) {
     useProxy(storage);
-    const [timeStr, setTimeStr] = useState(() => formatTimestamp(storage.lastOnlineData?.[userId], storage.timeFormat));
+    
+    // Safely retrieve timestamp from persistent storage
+    const timestamp = storage.lastOnlineData?.[userId];
+    const [timeStr, setTimeStr] = useState(() => formatTimestamp(timestamp, storage.timeFormat));
 
     useEffect(() => {
-        const interval = setInterval(() => {
-            setTimeStr(formatTimestamp(storage.lastOnlineData?.[userId], storage.timeFormat));
-        }, 30000); // Refresh every 30s for relative time accuracy
+        const updateText = () => {
+            const currentTimestamp = storage.lastOnlineData?.[userId];
+            setTimeStr(formatTimestamp(currentTimestamp, storage.timeFormat));
+        };
+
+        updateText();
+        const interval = setInterval(updateText, 30000);
 
         return () => clearInterval(interval);
-    }, [userId, storage.timeFormat]);
+    }, [userId, storage.timeFormat, storage.lastOnlineData?.[userId]]);
 
     if (!timeStr) return null;
 
