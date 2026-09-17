@@ -29,7 +29,6 @@ storage.lastSeen ??= {};
 const MAX_TRACKED = 500;
 const lastSeen = new Map<string, number>();
 
-// In-memory hydration
 if (storage.settings.persist && storage.lastSeen) {
   const cached = storage.lastSeen;
   for (const id in cached) {
@@ -83,8 +82,11 @@ const labelFor = (ts: number) => `${storage.settings.label || "Active"} ${format
 // --- Stores & Finders ---
 const PresenceStore = findByStoreName("PresenceStore") || findByProps("getStatus");
 const UserStore = findByStoreName("UserStore");
+const GuildMemberStore = findByStoreName("GuildMemberStore");
 const FluxDispatcher = findByProps("dispatch", "subscribe");
+
 const MessageAuthorModule = findByProps("getMessageAuthor", "useNullableMessageAuthor");
+const DisplayNameModule = findByProps("getName", "getFormattedName");
 
 const isOffline = (userId: string) => {
   try {
@@ -94,7 +96,7 @@ const isOffline = (userId: string) => {
   }
 };
 
-// --- Optimized Presence Listener ---
+// --- Presence Listener ---
 const seenOnline = new Set<string>();
 let unsubPresence: (() => void) | null = null;
 
@@ -122,59 +124,16 @@ const startPresence = () => {
   unsubPresence = () => FluxDispatcher?.unsubscribe?.("PRESENCE_UPDATES", handlePresenceUpdate);
 };
 
-// --- UserStore Proxy & Message Author Patch ---
-let origGetUser: any = null;
-const proxyCache = new WeakMap<object, any>();
+// --- Target Surface Patches ---
 const unpatches: Array<() => void> = [];
 
 function applyPatches() {
-  // 1. UserStore Proxy Patch
-  if (UserStore?.getUser && !origGetUser) {
-    origGetUser = UserStore.getUser;
-    const currentUserId = UserStore.getCurrentUser()?.id;
-
-    UserStore.getUser = function (id: string) {
-      const user = origGetUser.call(this, id);
-      if (!user || id === currentUserId) return user;
-
-      const anyEnabled =
-        storage.settings.dmList !== false ||
-        storage.settings.memberList !== false ||
-        storage.settings.header !== false ||
-        storage.settings.chatMessages !== false;
-
-      if (!anyEnabled) return user;
-
-      const seenAt = getSeen(id);
-      if (seenAt === undefined || !isOffline(id)) return user;
-
-      if (proxyCache.has(user)) {
-        return proxyCache.get(user);
-      }
-
-      const proxiedUser = new Proxy(user, {
-        get(target, prop, receiver) {
-          if (prop === "globalName" || prop === "username") {
-            const originalName = target[prop];
-            if (!originalName) return originalName;
-            return `${originalName} • ${labelFor(seenAt)}`;
-          }
-          return Reflect.get(target, prop, receiver);
-        },
-      });
-
-      proxyCache.set(user, proxiedUser);
-      return proxiedUser;
-    };
-  }
-
-  // 2. Chat Message Author Patch (Module 4793)
+  // 1. Channel Messages (Module 4793)
   if (MessageAuthorModule?.getMessageAuthor) {
     unpatches.push(
       patcher.after(MessageAuthorModule, "getMessageAuthor", (_args, author) => {
         if (!author) return author;
 
-        // If chat message display is DISABLED, strip appended time string
         if (storage.settings.chatMessages === false) {
           if (typeof author.nick === "string" && author.nick.includes(" • ")) {
             author.nick = author.nick.split(" • ")[0];
@@ -187,13 +146,43 @@ function applyPatches() {
       })
     );
   }
+
+  // 2. Display Names / DM Headers / Global Names
+  if (DisplayNameModule?.getName) {
+    unpatches.push(
+      patcher.after(DisplayNameModule, "getName", ([user], name) => {
+        if (!storage.settings.header && !storage.settings.dmList) return name;
+        if (!user?.id || !isOffline(user.id)) return name;
+
+        const seenAt = getSeen(user.id);
+        if (seenAt === undefined || (typeof name === "string" && name.includes(" • "))) return name;
+
+        return `${name} • ${labelFor(seenAt)}`;
+      })
+    );
+  }
+
+  // 3. Member List & Guild Nicknames
+  if (GuildMemberStore?.getNick) {
+    unpatches.push(
+      patcher.after(GuildMemberStore, "getNick", ([_guildId, userId], nick) => {
+        if (!storage.settings.memberList) return nick;
+        if (!userId || !isOffline(userId)) return nick;
+
+        const seenAt = getSeen(userId);
+        if (seenAt === undefined) return nick;
+
+        const user = UserStore?.getUser?.(userId);
+        const baseName = nick || user?.globalName || user?.username;
+        if (!baseName || (typeof baseName === "string" && baseName.includes(" • "))) return nick;
+
+        return `${baseName} • ${labelFor(seenAt)}`;
+      })
+    );
+  }
 }
 
 function removePatches() {
-  if (UserStore && origGetUser) {
-    UserStore.getUser = origGetUser;
-    origGetUser = null;
-  }
   unpatches.forEach((u) => {
     try {
       u();
@@ -256,7 +245,7 @@ function Settings() {
           )}
           <TableSwitchRow
             label="In channel messages"
-            subLabel="Show last-seen time in chat message headers"
+            subLabel="Show time tag next to names in chat message headers"
             value={!!storage.settings.chatMessages}
             onValueChange={(v: boolean) => (storage.settings.chatMessages = v)}
           />
