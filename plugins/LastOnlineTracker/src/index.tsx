@@ -14,6 +14,7 @@ export default {
         storage.dmTopBar ??= true;
         storage.userList ??= true;
         storage.profileUsername ??= true;
+        storage.lastOnlineData ??= {};
 
         // 1. DM Header Injection
         const ChannelHeader = findByName("ChannelHeader", false);
