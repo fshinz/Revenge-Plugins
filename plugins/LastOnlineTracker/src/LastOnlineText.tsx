@@ -5,70 +5,88 @@ import { useProxy } from "@vendetta/storage";
 
 const { Text } = ReactNative;
 
-function formatTimestamp(timestamp: number | undefined) {
+function formatTimestamp(timestamp, format) {
     if (!timestamp) return null;
 
     const date = new Date(timestamp);
-    const diffSeconds = Math.floor((Date.now() - timestamp) / 1000);
+
+    if (format === "exact") {
+        return date.toLocaleString([], {
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit"
+        });
+    }
+
+    const diffSeconds = Math.floor(
+        (Date.now() - timestamp) / 1000
+    );
 
     if (diffSeconds < 60) {
         return "Just now";
     }
 
-    const diffMinutes = Math.floor(diffSeconds / 60);
+    const diffMinutes = Math.floor(
+        diffSeconds / 60
+    );
 
     if (diffMinutes < 60) {
         return `${diffMinutes}m ago`;
     }
 
-    const diffHours = Math.floor(diffMinutes / 60);
+    const diffHours = Math.floor(
+        diffMinutes / 60
+    );
 
     if (diffHours < 24) {
         return `${diffHours}h ago`;
     }
 
-    const diffDays = Math.floor(diffHours / 24);
+    const diffDays = Math.floor(
+        diffHours / 24
+    );
 
-    if (diffDays < 7) {
-        return `${diffDays}d ago`;
-    }
-
-    return date.toLocaleString([], {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit"
-    });
+    return `${diffDays}d ago`;
 }
 
 export default function LastOnlineText({
     userId,
     style
-}: {
-    userId: string;
-    style?: any;
 }) {
     useProxy(storage);
 
     const [timeStr, setTimeStr] = useState(() =>
-        formatTimestamp(storage.lastOnlineData?.[userId])
+        formatTimestamp(
+            storage.lastOnlineData?.[userId],
+            storage.timeFormat
+        )
     );
 
     useEffect(() => {
         const update = () => {
+            const timestamp =
+                storage.lastOnlineData?.[userId];
+
             setTimeStr(
                 formatTimestamp(
-                    storage.lastOnlineData?.[userId]
+                    timestamp,
+                    storage.timeFormat
                 )
             );
         };
 
         update();
 
-        const interval = setInterval(update, 30000);
+        const interval = setInterval(
+            update,
+            30000
+        );
 
-        return () => clearInterval(interval);
-    }, [userId]);
+        return () => {
+            clearInterval(interval);
+        };
+    }, [userId, storage.timeFormat]);
 
     if (!timeStr) {
         return null;
